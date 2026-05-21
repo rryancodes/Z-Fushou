@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["npm install --legacy-peer-deps"]
+
+[variables]
+NODE_VERSION = "20"
+
+[start]
+cmd = "node index.js"
