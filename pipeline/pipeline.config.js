@@ -1,11 +1,11 @@
 const PIPELINE_CONFIG = {
   // TextTiling parameters
-  BOUNDARY_WINDOW_SIZE: 3,
-  BOUNDARY_DEPTH_THRESHOLD: 0.15,
+  BOUNDARY_WINDOW_SIZE: 2,            // 2 = more sensitive to rapid topic shifts (Discord)
+  BOUNDARY_DEPTH_THRESHOLD: 0.10,     // 0.10 = catches subtler boundaries without over-segmenting
   BOUNDARY_SMOOTHING_WINDOW: 3,
 
   // Segment constraints
-  MIN_SEGMENT_SIZE: 3,
+  MIN_SEGMENT_SIZE: 2,                // 2 = allows short topic bursts to form own segments
   MAX_SEGMENT_SIZE: 80,
 
   // Context block construction
