@@ -66,25 +66,50 @@ async function callLLMForSummary(systemPrompt, userContent) {
 }
 
 /**
- * Extract JSON from LLM response (handles markdown code blocks).
+ * Extract JSON object from LLM response.
+ * Handles: markdown code blocks, prose before/after JSON, multiple objects.
+ * Uses balanced-brace matching to avoid greedy over-capture.
  */
 function extractJSON(text) {
-  if (!text || typeof text !== 'string') {
-    return null;
-  }
-  
-  // Try to find JSON in markdown code block
+  if (!text || typeof text !== 'string') return null;
+
+  // 1. Try markdown code block first (most reliable)
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (codeBlockMatch) {
-    return codeBlockMatch[1].trim();
+    const candidate = codeBlockMatch[1].trim();
+    try { JSON.parse(candidate); return candidate; } catch { /* fall through */ }
   }
-  
-  // Try to find JSON object in text
+
+  // 2. Balanced-brace matching: find the first valid JSON object
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (let j = i; j < text.length; j++) {
+        const ch = text[j];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"' && !escape) { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{') depth++;
+        if (ch === '}') depth--;
+        if (depth === 0) {
+          const candidate = text.slice(i, j + 1);
+          try { JSON.parse(candidate); return candidate; } catch { break; }
+        }
+      }
+    }
+  }
+
+  // 3. Greedy regex fallback (last resort)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    return jsonMatch[0].trim();
+    const candidate = jsonMatch[0].trim();
+    try { JSON.parse(candidate); return candidate; } catch { /* give up */ }
   }
-  
+
+  // 4. Last resort: return raw text and let caller handle parse error
   return text.trim();
 }
 

@@ -78,7 +78,9 @@ function formatSegmentPreview(segment, maxMessages) {
 }
 
 /**
- * Extract JSON from LLM response (handles markdown code blocks or already-parsed arrays).
+ * Extract JSON array from LLM response.
+ * Handles: markdown code blocks, prose before/after JSON, already-parsed arrays.
+ * Uses balanced-bracket matching for arrays to avoid greedy over-capture.
  *
  * @param {string|Array} text
  * @returns {string}
@@ -86,17 +88,50 @@ function formatSegmentPreview(segment, maxMessages) {
 function extractJSON(text) {
   // If LLM already returned parsed array, stringify it
   if (Array.isArray(text)) {
-    console.log('[classifier] extractJSON received array, stringifying...');
     return JSON.stringify(text);
   }
-  
+
   if (!text || typeof text !== 'string') {
-    console.error('[classifier] extractJSON received non-string:', typeof text, text);
-    return '{}';
+    return '[]';
   }
-  
+
+  // 1. Try markdown code block first (most reliable)
   var codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) return codeBlockMatch[1].trim();
+  if (codeBlockMatch) {
+    var candidate = codeBlockMatch[1].trim();
+    try { JSON.parse(candidate); return candidate; } catch (e) { /* fall through */ }
+  }
+
+  // 2. Balanced-bracket matching: find the first valid JSON array
+  for (var i = 0; i < text.length; i++) {
+    if (text[i] === '[') {
+      var depth = 0;
+      var inString = false;
+      var escape = false;
+      for (var j = i; j < text.length; j++) {
+        var ch = text[j];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"' && !escape) { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '[' || ch === '{') depth++;
+        if (ch === ']' || ch === '}') depth--;
+        if (depth === 0) {
+          var arrCandidate = text.slice(i, j + 1);
+          try { JSON.parse(arrCandidate); return arrCandidate; } catch (e) { break; }
+        }
+      }
+    }
+  }
+
+  // 3. Greedy regex fallback (last resort)
+  var arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    var greedyCandidate = arrMatch[0].trim();
+    try { JSON.parse(greedyCandidate); return greedyCandidate; } catch (e) { /* give up */ }
+  }
+
+  // 4. Last resort: return raw text and let caller handle parse error
   return text.trim();
 }
 
