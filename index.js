@@ -60,7 +60,7 @@ const client = new Client({
 });
 
 // ── Ready ────────────────────────────────────────────────────────────
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`[bot] Online as ${client.user.tag} (${client.guilds.cache.size} guilds)`);
   console.log('[bot] Mode: ingestion-only — silent listener, no replies');
 
