@@ -12,6 +12,43 @@ const {
 const ingestion = require('./lib/ingestion');
 const cleaning = require('./lib/cleaning');
 
+// ── Semantic pipeline scheduler (cron-based) ──────────────────────
+// Runs daily at 6:00 AM Beijing Time (Asia/Shanghai) via node-cron
+// Set PIPELINE_ENABLED=true to activate
+const PIPELINE_ENABLED = process.env.PIPELINE_ENABLED === 'true';
+const PIPELINE_CRON = process.env.PIPELINE_CRON || '0 6 * * *';       // default: 6:00 AM
+const PIPELINE_TZ = process.env.PIPELINE_TZ || 'Asia/Shanghai';       // default: Beijing time
+let pipelineJob = null;
+
+function startPipelineScheduler() {
+  if (!PIPELINE_ENABLED) return;
+
+  const cron = require('node-cron');
+  const { runPipeline } = require('./pipeline/src/index');
+
+  pipelineJob = cron.schedule(PIPELINE_CRON, async () => {
+    console.log('[pipeline] Starting scheduled semantic pipeline run');
+    try {
+      await runPipeline();
+      console.log('[pipeline] Scheduled run complete');
+    } catch (err) {
+      console.error('[pipeline] Scheduled run failed:', err.message);
+    }
+  }, {
+    scheduled: true,
+    timezone: PIPELINE_TZ,
+  });
+
+  console.log(`[pipeline] Scheduler active — cron "${PIPELINE_CRON}" (${PIPELINE_TZ})`);
+}
+
+function stopPipelineScheduler() {
+  if (pipelineJob) {
+    pipelineJob.stop();
+    pipelineJob = null;
+  }
+}
+
 // ── Client setup ────────────────────────────────────────────────────
 const client = new Client({
   intents: [
@@ -46,6 +83,13 @@ client.once('ready', async () => {
     console.error('[cleaning] Start failed:', err.message);
   }
 
+  // Start semantic pipeline scheduler (if enabled)
+  if (PIPELINE_ENABLED) {
+    startPipelineScheduler();
+  } else {
+    console.log('[pipeline] Disabled (set PIPELINE_ENABLED=true to activate)');
+  }
+
   console.log('[bot] Systems running — ingestion + cleaning active');
 });
 
@@ -57,6 +101,7 @@ client.on('messageCreate', message => {
 // ── Graceful shutdown ────────────────────────────────────────────────
 async function shutdown(signal) {
   console.log(`[bot] ${signal} received — shutting down gracefully`);
+  stopPipelineScheduler();
   cleaning.stop();
   await ingestion.shutdown();
   client.destroy();

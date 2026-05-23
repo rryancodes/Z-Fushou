@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 
 // Load .env for local development (safe no-op on Railway where vars are injected)
 try { require('dotenv').config(); } catch { }
@@ -13,6 +14,18 @@ const { storeSegmentClassifications } = require('./storeResults');
 const { buildContextBlocks } = require('./contextBuilder');
 const { embedContextBlocks } = require('./embedder');
 const qdrantClient = require('./qdrantClient');
+
+// Lazy-initialized Supabase client for marking rows as processed
+let _supabase = null;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY,
+    );
+  }
+  return _supabase;
+}
 
 /**
  * Validate required environment variables at startup.
@@ -196,6 +209,21 @@ async function runPipeline() {
     // Note: This runs on all segments together (not date-isolated)
     // Qdrant is used for RAG retrieval, not daily reporting
     await bestEffortEmbedAndIndex(allSegments);
+
+    // Step 5: Mark processed rows with semantic_processed_at timestamp
+    // This MUST happen only after successful processing to prevent silent data loss
+    const processedMessageIds = messages.map(m => m.message_id);
+    if (processedMessageIds.length > 0) {
+      const { error: markError } = await getSupabase()
+        .from('community_messages_clean')
+        .update({ semantic_processed_at: new Date().toISOString() })
+        .in('message_id', processedMessageIds);
+      if (markError) {
+        logger.error('orchestrator', 'Failed to mark rows as processed', { error: markError.message });
+      } else {
+        logger.info('orchestrator', `Marked ${processedMessageIds.length} rows as semantically processed`);
+      }
+    }
 
     // Success — update tracking
     // Use the latest timestamp from the data we just processed

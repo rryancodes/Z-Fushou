@@ -52,6 +52,7 @@ async function fetchMessages(startTime, endTime) {
     let query = supabase
       .from('community_messages_clean')
       .select(COLUMNS)
+      .is('semantic_processed_at', null)
       .order('id', { ascending: false })
       .limit(chunkSize);
 
