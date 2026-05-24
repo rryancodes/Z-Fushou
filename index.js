@@ -12,6 +12,12 @@ const {
 const ingestion = require('./lib/ingestion');
 const cleaning = require('./lib/cleaning');
 
+// ── Mention briefing service (real-time) ───────────────────────────
+// Polls every 60s for monitored mentions needing summarization.
+// Set MENTION_BRIEFING_ENABLED=true to activate
+const MENTION_BRIEFING_ENABLED = process.env.MENTION_BRIEFING_ENABLED === 'true';
+const mentionBriefing = require('./lib/mentionBriefing');
+
 // ── Semantic pipeline scheduler (cron-based) ──────────────────────
 // Runs daily at 7:00 AM Beijing Time (Asia/Shanghai) via node-cron
 // Set PIPELINE_ENABLED=true to activate
@@ -90,6 +96,13 @@ client.once('clientReady', async () => {
     console.log('[pipeline] Disabled (set PIPELINE_ENABLED=true to activate)');
   }
 
+  // Start mention briefing service (if enabled)
+  if (MENTION_BRIEFING_ENABLED) {
+    mentionBriefing.start();
+  } else {
+    console.log('[mentionBriefing] Disabled (set MENTION_BRIEFING_ENABLED=true to activate)');
+  }
+
   console.log('[bot] Systems running — ingestion + cleaning active');
 });
 
@@ -102,6 +115,7 @@ client.on('messageCreate', message => {
 async function shutdown(signal) {
   console.log(`[bot] ${signal} received — shutting down gracefully`);
   stopPipelineScheduler();
+  mentionBriefing.stop();
   cleaning.stop();
   await ingestion.shutdown();
   client.destroy();
