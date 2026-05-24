@@ -242,10 +242,17 @@ IMPORTANT:
     return parsed;
   } catch (err) {
     logger.error('topicSummarizer', `Failed to summarize "${topicLabel}"`, { error: err.message });
-    
-    // Return fallback summary
+
+    // Build a fallback summary from actual message content instead of generic label
+    const allMessages = segments.flatMap(s => s.messages || []);
+    const uniqueUsers = new Set(allMessages.map(m => m.username)).size;
+    const firstMessages = allMessages.slice(0, 5).map(m => m.content).filter(Boolean);
+    const fallbackSummary = firstMessages.length
+      ? `${topicLabel} — ${uniqueUsers} users discussed: ${firstMessages.join(' | ')}`
+      : `${topicLabel} discussion with ${uniqueUsers} users across ${segments.length} segment(s).`;
+
     return {
-      summary: `Discussion about ${topicLabel} involving ${segments.length} segments.`,
+      summary: fallbackSummary,
       key_issues: [],
       unanswered_questions: [],
       sentiment: 'neutral',
