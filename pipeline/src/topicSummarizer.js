@@ -66,21 +66,22 @@ async function callLLMForSummary(systemPrompt, userContent) {
 }
 
 /**
- * Extract JSON object from LLM response.
- * Handles: markdown code blocks, prose before/after JSON, multiple objects.
- * Uses balanced-brace matching to avoid greedy over-capture.
+ * Strip all markdown code fences from text.
+ * Handles ```json, ```JSON, ``` and bare backtick pairs.
  */
-function extractJSON(text) {
-  if (!text || typeof text !== 'string') return null;
+function stripMarkdownFences(text) {
+  return text
+    .replace(/```(?:json|JSON)?\s*\n?/g, '')
+    .replace(/\n?```\s*/g, '')
+    .replace(/```/g, '')
+    .trim();
+}
 
-  // 1. Try markdown code block first (most reliable)
-  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (codeBlockMatch) {
-    const candidate = codeBlockMatch[1].trim();
-    try { JSON.parse(candidate); return candidate; } catch { /* fall through */ }
-  }
-
-  // 2. Balanced-brace matching: find the first valid JSON object
+/**
+ * Find the first valid JSON object in text using balanced-brace matching.
+ * Returns the validated JSON string or null.
+ */
+function findBalancedJSON(text) {
   for (let i = 0; i < text.length; i++) {
     if (text[i] === '{') {
       let depth = 0;
@@ -101,16 +102,42 @@ function extractJSON(text) {
       }
     }
   }
+  return null;
+}
 
-  // 3. Greedy regex fallback (last resort)
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    const candidate = jsonMatch[0].trim();
-    try { JSON.parse(candidate); return candidate; } catch { /* give up */ }
+/**
+ * Extract JSON object from LLM response.
+ * Handles: markdown code blocks, prose before/after JSON, multiple objects.
+ * Returns the validated JSON string or null — never returns raw text.
+ */
+function extractJSON(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  // 1. Try fenced code block extraction (handles ```json ... ```)
+  const codeBlockMatch = text.match(/```(?:json|JSON)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    const candidate = codeBlockMatch[1].trim();
+    try { JSON.parse(candidate); return candidate; } catch { /* fall through */ }
   }
 
-  // 4. Last resort: return raw text and let caller handle parse error
-  return text.trim();
+  // 2. Strip all fences and try balanced-brace matching on cleaned text
+  const cleaned = stripMarkdownFences(text);
+  const balanced = findBalancedJSON(cleaned);
+  if (balanced) return balanced;
+
+  // 3. Greedy regex on cleaned text (catches edge cases balanced-brace misses)
+  const greedyMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (greedyMatch) {
+    const candidate = greedyMatch[0].trim();
+    try { JSON.parse(candidate); return candidate; } catch { /* fall through */ }
+  }
+
+  // 4. Last attempt: balanced-brace on original text (in case stripping broke something)
+  const originalBalanced = findBalancedJSON(text);
+  if (originalBalanced) return originalBalanced;
+
+  // No valid JSON found — return null so caller can retry with stricter prompt
+  return null;
 }
 
 /**
@@ -181,64 +208,69 @@ Be thorough and detailed. Do not omit important details. Include specific error 
 CONVERSATION DATA:
 ${conversationText}
 
-OUTPUT FORMAT:
-Return a valid JSON object with this exact structure:
+OUTPUT FORMAT — RAW JSON ONLY:
+{"summary":"Your 3-5 sentence summary","key_issues":["Issue 1","Issue 2"],"unanswered_questions":["Question 1"],"sentiment":"frustrated or confused or neutral or satisfied","severity":"critical or high or medium or low"}
 
-{
-  "summary": "Your detailed 3-5 sentence summary here...",
-  "key_issues": [
-    "Issue 1 description",
-    "Issue 2 description",
-    "Issue 3 description"
-  ],
-  "unanswered_questions": [
-    "Question 1 that was never answered",
-    "Question 2 that needs team response"
-  ],
-  "sentiment": "frustrated|confused|neutral|satisfied",
-  "severity": "critical|high|medium|low"
-}
+CRITICAL RULES:
+- Return ONLY the raw JSON object — no markdown, no code fences, no backticks, no explanation text before or after
+- Do NOT wrap the JSON in \`\`\`json blocks
+- Do NOT add any text before or after the JSON object
+- If no unanswered questions, use empty array []
+- If no key issues, use empty array []`;
 
-IMPORTANT:
-- Return ONLY the JSON object, no explanation
-- Be specific and detailed in all fields
-- Include error codes, timestamps, and specific details where relevant
-- If no unanswered questions exist, use empty array []
-- If no key issues exist, use empty array []`;
+  const strictRetryPrompt = `You MUST respond with ONLY a raw JSON object. No markdown. No code fences. No backticks. No explanation.
+
+Output this exact JSON structure with real data filled in:
+{"summary":"summary text","key_issues":["issue"],"unanswered_questions":["question"],"sentiment":"neutral","severity":"medium"}
+
+The topic is "${topicLabel}". Here is the conversation:
+${conversationText}
+
+Respond with the JSON object now. Nothing else.`;
 
   try {
     const { content, usage } = await callLLMForSummary(systemPrompt, userPrompt);
-    const jsonStr = extractJSON(content);
-    
+    let jsonStr = extractJSON(content);
+    let retried = false;
+
+    // Retry once with stricter prompt if extraction failed
     if (!jsonStr) {
-      throw new Error('No JSON found in LLM response');
+      logger.warn('topicSummarizer', `First attempt failed for "${topicLabel}", retrying with strict prompt`);
+      const retryResult = await callLLMForSummary(systemPrompt, strictRetryPrompt);
+      jsonStr = extractJSON(retryResult.content);
+      retried = true;
     }
-    
+
+    if (!jsonStr) {
+      throw new Error('No JSON found in LLM response after retry');
+    }
+
     const parsed = JSON.parse(jsonStr);
-    
+
     // Validate required fields
     if (!parsed.summary || !Array.isArray(parsed.key_issues) || !Array.isArray(parsed.unanswered_questions)) {
       throw new Error('Invalid summary structure');
     }
-    
+
     // Validate sentiment and severity
     const validSentiments = ['frustrated', 'confused', 'neutral', 'satisfied'];
     const validSeverities = ['critical', 'high', 'medium', 'low'];
-    
+
     parsed.sentiment = validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral';
     parsed.severity = validSeverities.includes(parsed.severity) ? parsed.severity : 'medium';
-    
+
     // Add token usage
     parsed.tokensUsed = usage?.total_tokens || 0;
-    
+
     logger.info('topicSummarizer', `Generated summary for "${topicLabel}"`, {
       tokensUsed: parsed.tokensUsed,
       sentiment: parsed.sentiment,
       severity: parsed.severity,
       keyIssuesCount: parsed.key_issues.length,
       unansweredCount: parsed.unanswered_questions.length,
+      retried,
     });
-    
+
     return parsed;
   } catch (err) {
     logger.error('topicSummarizer', `Failed to summarize "${topicLabel}"`, { error: err.message });
@@ -390,4 +422,8 @@ module.exports = {
   summarizeTopic,
   buildConversationText,
   calculateEngagementMetrics,
+  extractJSON,
+  stripMarkdownFences,
+  findBalancedJSON,
+  callLLMForSummary,
 };
