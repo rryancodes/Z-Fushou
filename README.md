@@ -1,237 +1,229 @@
-# Z-Fushou — Discord Message Ingestion & Cleaning Bot
+# Z-Fushou
 
-A silent Discord bot that ingests messages from configured channels into Supabase and runs an autonomous cleaning pipeline. No replies, no AI, no support workflows — pure data collection and processing.
+Discord community analytics system. A silent bot collects messages from Discord channels, cleans and analyzes them overnight, and serves the results through API endpoints that a desktop app reads to show dashboards.
+
+## What it does
+
+1. **Collects messages** from configured Discord channels in real time
+2. **Cleans them** — removes noise, normalizes text, resolves user mentions
+3. **Analyzes them nightly** — groups messages into conversation topics, generates summaries using an AI model, rates sentiment (frustrated, confused, neutral, satisfied) and urgency (critical, high, medium, low)
+4. **Serves analytics** through authenticated API endpoints (message counts, topic clusters, activity charts, mention alerts)
+5. **Flags important mentions** — when specific people (team leads, community managers) are mentioned, those messages get tagged for review
+
+The desktop app connects to the API endpoints, authenticates the user, and renders charts and dashboards.
 
 ## Architecture
 
 ```
-Discord Messages
-      │
-      ▼
-┌─────────────────────────────────────┐
-│  messageListener.js                 │  Real-time ingestion
-│  ├─ Filter: bot/system/empty        │
-│  ├─ Filter: channel whitelist       │
-│  ├─ Filter: MIN_MESSAGE_DATE        │
-│  └─ Enqueue → batchWriter           │
-└──────────────┬──────────────────────┘
+Discord
+  │
+  ▼
+┌──────────────────────────────────────┐
+│  Ingestion (index.js)                │
+│  Real-time message capture via bot   │
+│  Batch writes to Supabase            │
+└──────────────┬───────────────────────┘
                │
                ▼
-┌─────────────────────────────────────┐
-│  batchWriter.js                     │  In-memory queue
-│  ├─ Flush every 10s or 50 msgs     │
-│  └─ bulkInsert → Supabase           │
-└──────────────┬──────────────────────┘
+┌──────────────────────────────────────┐
+│  Cleaning (every 30 min)             │
+│  Noise removal, mention resolution,  │
+│  text normalization → clean table    │
+└──────────────┬───────────────────────┘
                │
                ▼
-┌─────────────────────────────────────┐
-│  community_messages (Supabase)      │  Raw message storage
-│  ├─ message_id (PK, text)           │
-│  ├─ channel_id, thread_id           │
-│  ├─ user_id, username               │
-│  ├─ content, attachments (JSONB)    │
-│  ├─ is_monitored_mention            │
-│  ├─ mentioned_user_ids              │
-│  ├─ is_cleaned (boolean)            │
-│  └─ cleaned_message_id              │
-└──────────────┬──────────────────────┘
+┌──────────────────────────────────────┐
+│  Nightly Pipeline (7 AM Beijing)     │
+│  Boundary detection → topic grouping │
+│  AI summarization → sentiment rating │
+│  Results stored in Supabase          │
+│  Vectors indexed in Qdrant           │
+└──────────────┬───────────────────────┘
                │
                ▼
-┌─────────────────────────────────────┐
-│  cleanWorker.js (autonomous loop)   │  Every N minutes
-│  ├─ Phase 1: Filter noise           │
-│  ├─ Phase 2: Normalize mentions     │
-│  │   <@id> → <mentioned_username>   │
-│  ├─ Phase 3: Normalize text         │
-│  │   Strip markdown, lowercase      │
-│  ├─ Phase 4: Upsert to clean table  │
-│  └─ Phase 5: Mark raw as cleaned    │
-└──────────────┬──────────────────────┘
+┌──────────────────────────────────────┐
+│  Edge Functions (Supabase)           │
+│  /kpi  /clusters  /activity          │
+│  /mentions  /messages                │
+│  /cluster-detail  /date-availability │
+│  Authenticated via desktop JWT       │
+└──────────────┬───────────────────────┘
                │
                ▼
-┌─────────────────────────────────────┐
-│  community_messages_clean           │  Cleaned message storage
-│  ├─ id (PK, auto)                   │
-│  ├─ message_id (FK → raw)           │
-│  ├─ channel_id, thread_id           │
-│  ├─ user_id, username               │
-│  └─ clean_content                   │
-└─────────────────────────────────────┘
+          Desktop App
+     (Electron + Charts)
 ```
 
-## Features
+## Two Runtime Environments
 
-### Ingestion
-- **Real-time capture** — Listens to `messageCreate` events from configured channels
-- **Thread support** — Automatically captures messages inside threads belonging to watched parent channels
-- **Batch writing** — In-memory queue flushes to Supabase every 10 seconds or 50 messages (whichever comes first)
-- **Checkpoint-based backfill** — On startup, fetches missed messages since last checkpoint per channel
-- **Minimum date boundary** — `MIN_MESSAGE_DATE` env var rejects messages older than a configurable cutoff
-- **Reply reference tracking** — Stores `message.reference` (replied-to message ID, channel, guild) in the `attachments` JSONB field
-- **Monitored mention detection** — Flags messages that mention specific users (ambassadors/officials) with `is_monitored_mention` and `mentioned_user_ids`
+### Railway (always-on Node.js process)
+Runs `index.js` — the bot stays connected to Discord 24/7. Handles:
+- Real-time message ingestion
+- Periodic cleaning
+- Scheduled nightly pipeline (7 AM Beijing time via node-cron)
 
-### Cleaning Pipeline
-- **Autonomous loop** — Runs on a configurable interval (default: 5 minutes)
-- **5-phase processing:**
-  1. **Noise filtering** — Skips emoji-only, short acknowledgements, duplicates
-  2. **Mention normalization** — Batch resolves `<@id>` → `<mentioned_username>` using bulk username lookup
-  3. **Text normalization** — Strips markdown, lowercases, removes special characters (preserves `<mentioned_>` tokens)
-  4. **Upsert to clean table** — Inserts into `community_messages_clean`
-  5. **Flag raw rows** — Sets `is_cleaned = TRUE` + `cleaned_message_id` on the original row
-- **Retention cleanup** — Configurable retention period for old raw messages
+Deploys automatically on push to main.
+
+### Supabase (Edge Functions)
+Seven API endpoints deployed directly to Supabase via CLI. The desktop app calls these. Each endpoint:
+- Verifies the user's auth token
+- Queries the database
+- Returns structured JSON
+
+Not connected to Railway — deployed and logged separately.
 
 ## Project Structure
 
 ```
-index.js                              # Entry point — starts ingestion + cleaning
+index.js                              # Entry point — bot + cron scheduler
 lib/
-├── supabase.js                       # Supabase client singleton
+├── supabase.js                       # Supabase client
 ├── ingestion/
-│   ├── index.js                      # Ingestion init (channels, backfill, batch writer)
-│   ├── messageListener.js            # Discord messageCreate handler + filters
-│   ├── ingestionCheckpoint.js        # structureMessage(), backfill(), mention detection
+│   ├── index.js                      # Channel setup, backfill, batch writer
+│   ├── messageListener.js            # Discord event handler + filters
+│   ├── ingestionCheckpoint.js        # Message formatting, mention detection
 │   ├── batchWriter.js                # In-memory queue + periodic flush
-│   ├── messageQueue.js               # Queue data structure
-│   └── supabaseClient.js             # bulkInsert, checkpoint read/write
+│   └── supabaseClient.js             # Database inserts, checkpoint read/write
 ├── cleaning/
 │   ├── index.js                      # Autonomous loop (start/stop)
-│   ├── cleanWorker.js                # 5-phase cleaning pipeline
-│   ├── mentionNormalizer.js          # Batch <@id> → <mentioned_username>
-│   ├── normalizeText.js              # Text normalization with token preservation
-│   ├── noiseFilters.js               # Emoji-only, acknowledgement, duplicate detection
-│   └── retentionCleanup.js           # Old message retention + summary storage
+│   ├── cleanWorker.js                # 5-phase cleaning
+│   ├── mentionNormalizer.js          # <@id> → <@username>
+│   ├── normalizeText.js              # Text normalization
+│   └── noiseFilters.js               # Emoji-only, duplicate detection
+pipeline/
+├── pipeline.config.js                # Model config, env requirements
+└── src/
+    ├── index.js                      # Pipeline orchestrator (fetch → segment → summarize → store)
+    ├── fetchMessages.js              # Fetch cleaned messages from Supabase
+    ├── boundaryDetection.js          # Segment conversations by topic boundary
+    ├── classifier.js                 # AI topic classification
+    ├── topicSummarizer.js            # AI summarization + sentiment + severity
+    ├── storeResults.js               # Write results to Supabase (date-isolated)
+    ├── contextBuilder.js             # Build context blocks for embedding
+    ├── embedder.js                   # Generate embeddings via Cloudflare
+    ├── qdrantClient.js               # Vector DB upsert
+    ├── batchTracker.js               # Redis-based dedup + distributed lock
+    ├── logger.js                     # Structured logging with batch IDs
+    ├── mentionBriefing.js            # Real-time mention alert generation
+    └── __tests__/
+        └── topicSummarizer.test.js   # 33 tests covering JSON extraction, LLM calls, error handling
+supabase/
+├── config.toml                       # Supabase project config
+├── migrations/
+│   └── *_create_hourly_activity_rpc.sql  # Postgres aggregation function
+└── functions/
+    ├── _shared/
+    │   ├── admin.ts                  # Service-role Supabase client
+    │   ├── cors.ts                   # CORS headers
+    │   ├── date-utils.ts             # Date range helpers (pipeline vs realtime)
+    │   ├── error-handler.ts          # Structured error responses (401 vs 500)
+    │   └── verify-desktop-auth.ts    # JWT verification via external auth
+    ├── kpi/index.ts                  # KPI metrics with period comparison
+    ├── clusters/index.ts             # Topic cluster listing with pagination
+    ├── cluster-detail/index.ts       # Single cluster + messages + sparkline
+    ├── mentions/index.ts             # Flagged mention messages
+    ├── messages/index.ts             # Cleaned message browser
+    ├── activity/index.ts             # Hourly activity chart (DB aggregation)
+    └── date-availability/index.ts    # Which dates have data
 ```
+
+## Database Tables
+
+### Message tables
+| Table | Purpose |
+|---|---|
+| `community_messages` | Raw Discord messages as ingested |
+| `community_messages_clean` | Normalized version (noise removed, mentions resolved) |
+
+### Pipeline result tables
+| Table | Purpose |
+|---|---|
+| `pipeline_clusters` | Grouped conversation topics per day |
+| `pipeline_topic_summaries` | AI summaries with sentiment, severity, key issues |
+| `pipeline_cluster_messages` | Which messages belong to which topic |
+
+### Database views
+| View | Purpose |
+|---|---|
+| `pipeline_daily_clusters` | Deduplicated clusters per date |
+| `pipeline_daily_summaries` | Deduplicated summaries per date |
+
+### Database function
+| Function | Purpose |
+|---|---|
+| `get_hourly_activity(start, end)` | Aggregates messages and clusters into hourly buckets |
 
 ## Environment Variables
 
-### Required (Active)
-
-| Variable | Description | Example |
-|---|---|---|
-| `DISCORD_TOKEN` | Bot token from Discord Developer Portal | `MTQ4...` |
-| `CLIENT_ID` | Bot application ID | `1483052099133509683` |
-| `INGESTION_CHANNELS` | Comma-separated channel IDs to ingest from | `chan1,chan2` |
-| `SUPABASE_URL` | Supabase project URL | `https://xxx.supabase.co` |
-| `SUPABASE_KEY` | Supabase anon key | `eyJ...` |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key | `eyJ...` |
-
-### Optional (Active)
-
-| Variable | Description | Default |
-|---|---|---|
-| `MONITORED_USER_IDS` | Comma-separated user IDs to track mentions for | `""` (none) |
-| `MIN_MESSAGE_DATE` | ISO 8601 UTC — messages older than this are ignored | `""` (no filter) |
-| `CLEAN_INTERVAL_MINUTES` | Cleaning cycle interval in minutes | `5` |
-| `LOG_PRETTY` | Pretty-print console logs | `false` |
-
-### Disabled (For Future Use)
+### Required
 
 | Variable | Description |
 |---|---|
-| `CF_ACCOUNT_ID` | Cloudflare account for AI/embeddings |
-| `CF_API_TOKEN` | Cloudflare API token |
-| `QDRANT_URL` | Qdrant vector DB URL |
-| `QDRANT_API_KEY` | Qdrant API key |
-| `QDRANT_PIPELINE_COLLECTION` | Qdrant collection name |
-| `REDIS_URL` | Redis for BullMQ job queues |
-| `GUILD_ID` | Server ID (only for slash commands) |
-| `ROLE_BILLING` / `ROLE_PRODUCT` / `ROLE_TECHNICAL` / `ROLE_UNCLASSIFIED` | Support role IDs |
-| `BAD_REPORT_CHANNEL_ID` | Channel for bad reports |
-| `AUTO_BACKFILL` / `AUTO_RUN_PIPELINE` / `FORCE_FULL_PIPELINE` | Pipeline flags |
+| `DISCORD_TOKEN` | Bot token from Discord Developer Portal |
+| `CLIENT_ID` | Bot application ID |
+| `INGESTION_CHANNELS` | Comma-separated channel IDs to watch |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key |
 
-## Database Schema
+### Pipeline
 
-### `community_messages` (raw)
-
-| Column | Type | Description |
+| Variable | Description | Default |
 |---|---|---|
-| `message_id` | `text` (PK) | Discord snowflake ID |
-| `channel_id` | `text` | Parent channel ID (for threads: the parent channel) |
-| `thread_id` | `text` | Thread ID (null for regular messages) |
-| `guild_id` | `text` | Server ID |
-| `user_id` | `text` | Author's Discord ID |
-| `username` | `text` | Author's username |
-| `content` | `text` | Raw message content |
-| `timestamp` | `timestamptz` | Message creation time |
-| `attachments` | `jsonb` | `{ attachments: [...], reply: { message_id, channel_id, guild_id } }` |
-| `is_monitored_mention` | `boolean` | True if message mentions a monitored user |
-| `mentioned_user_ids` | `text[]` | Array of monitored user IDs mentioned |
-| `is_cleaned` | `boolean` | True after cleaning pipeline processes this row |
-| `cleaned_message_id` | `int` | FK to `community_messages_clean.id` |
+| `PIPELINE_ENABLED` | Enable nightly analysis | `false` |
+| `MENTION_BRIEFING_ENABLED` | Enable mention alerts | `false` |
+| `CF_ACCOUNT_ID` | Cloudflare account for AI model | — |
+| `CF_API_TOKEN` | Cloudflare API token | — |
+| `QDRANT_URL` | Vector database URL | — |
+| `QDRANT_API_KEY` | Vector database key | — |
+| `REDIS_URL` | Redis for dedup/locking (optional, degrades gracefully) | — |
+| `FORCE_FULL_PIPELINE` | Reprocess all history on next run | `false` |
 
-### `community_messages_clean` (cleaned)
+### Ingestion tuning
 
-| Column | Type | Description |
+| Variable | Description | Default |
 |---|---|---|
-| `id` | `serial` (PK) | Auto-increment ID |
-| `message_id` | `text` | Original Discord snowflake ID |
-| `channel_id` | `text` | Channel ID |
-| `thread_id` | `text` | Thread ID (nullable) |
-| `user_id` | `text` | Author's Discord ID |
-| `username` | `text` | Author's username |
-| `clean_content` | `text` | Normalized content (mentions resolved, markdown stripped) |
-| `timestamp` | `timestamptz` | Original message timestamp |
-
-### `message_ingestion_state` (checkpoints)
-
-| Column | Type | Description |
-|---|---|---|
-| `channel_id` | `text` (PK) | Channel ID |
-| `last_message_id` | `text` | Last ingested message snowflake |
+| `MONITORED_USER_IDS` | User IDs to track mentions for | `""` |
+| `MIN_MESSAGE_DATE` | Ignore messages older than this | `""` |
+| `CLEAN_INTERVAL_MINUTES` | Cleaning cycle interval | `30` |
+| `LOG_PRETTY` | Pretty-print logs | `false` |
 
 ## Deployment
 
-### Railway
+### Railway (bot + pipeline)
+1. Push to `main` — Railway auto-deploys
+2. Set all required env vars in Railway dashboard
+3. Bot connects to Discord, cron schedules the nightly pipeline
 
-1. Push to GitHub
-2. Connect repo in Railway
-3. Set all **Required** env vars in Railway → Service → Variables
-4. Railway auto-deploys on push
+### Supabase (API endpoints)
+1. `supabase db push` — apply migrations
+2. `supabase functions deploy <name> --no-verify-jwt` — deploy each endpoint
+3. Set secrets: `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_VERIFY_URL`
 
-### Local Development
-
+### Local development
 ```bash
 npm install
 cp .env.example .env   # Fill in your values
-npm start
+npm start              # Bot + cleaning
+npm run pipeline       # Run pipeline manually once
+npm test               # Run summarizer tests (33 tests)
 ```
 
 ## Adding the Bot to a Server
-
-Use this invite URL (replace `CLIENT_ID`):
 
 ```
 https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=66560&scope=bot
 ```
 
-Required permissions (`66560`):
-- **View Channels** (1024)
-- **Read Message History** (65536)
+Required permissions (`66560`): View Channels + Read Message History.
 
-**Critical:** Enable **Message Content Intent** in Discord Developer Portal → Bot → Privileged Gateway Intents.
+Enable **Message Content Intent** in Discord Developer Portal → Bot → Privileged Gateway Intents.
 
 ## Moving to a New Server
 
-1. Invite bot to new server (URL above)
-2. Update env vars:
-   - `INGESTION_CHANNELS` — new server's channel IDs
-   - `MONITORED_USER_IDS` — new server's ambassador/official IDs
-3. Restart the bot
+1. Invite bot to new server
+2. Update `INGESTION_CHANNELS` and `MONITORED_USER_IDS`
+3. Set `FORCE_FULL_PIPELINE=true` once to reprocess all messages
+4. Restart
 
-No code changes needed — the bot is guild-agnostic.
-
-## Disabled Features (Preserved in Codebase)
-
-These modules exist but are not loaded by the current `index.js`:
-
-- **AI Agent** (`lib/agent.js`) — RAG orchestration with Cloudflare Workers AI
-- **Issue Management** (`lib/issues.js`) — Support ticket lifecycle
-- **Department Routing** (`lib/departments.js`) — Auto-classification
-- **Forwarding** (`lib/forward.js`) — Cross-channel issue forwarding
-- **Notifications** (`lib/notify.js`) — DM status updates
-- **Reminders** (`lib/reminders.js`) — Stale issue follow-ups
-- **Pipeline** (`pipeline/`) — Semantic segmentation, embedding, Qdrant indexing
-- **Slash Commands** (`commands/`) — `/report`, `/close`, `/resolve`, etc.
-- **Job Queues** (`lib/queue.js`, `lib/workers.js`) — BullMQ workers
-
-These can be re-enabled by restoring the original `index.js` and uncommenting the corresponding env vars.
+No code changes needed.
