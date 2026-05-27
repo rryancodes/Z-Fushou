@@ -1,0 +1,119 @@
+import { admin } from "../_shared/admin.ts";
+import { corsHeaders } from "../_shared/cors.ts";
+import { verifyDesktopAuth } from "../_shared/verify-desktop-auth.ts";
+import { handleEdgeError } from "../_shared/error-handler.ts";
+
+// ---------------------------------------------------------------------------
+// Date validation (strict — rejects bad inputs, never silently falls back)
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isValidIso(str: string): boolean {
+  if (!str) return false;
+  const d = new Date(str);
+  return !isNaN(d.getTime());
+}
+
+interface DateBounds {
+  utcStart: string;
+  utcEnd: string;
+}
+
+function resolveBounds(
+  from?: string | null,
+  to?: string | null,
+): DateBounds | string {
+  if (from && to) {
+    if (!isValidIso(from)) return 'Invalid "from" date: not a valid ISO timestamp';
+    if (!isValidIso(to)) return 'Invalid "to" date: not a valid ISO timestamp';
+    if (new Date(from) > new Date(to)) return '"from" must be before or equal to "to"';
+    return {
+      utcStart: new Date(from).toISOString(),
+      utcEnd: new Date(to).toISOString(),
+    };
+  }
+
+  if (from) {
+    if (!isValidIso(from)) return 'Invalid "from" date: not a valid ISO timestamp';
+    return {
+      utcStart: new Date(from).toISOString(),
+      utcEnd: new Date().toISOString(),
+    };
+  }
+
+  const now = new Date();
+  return {
+    utcStart: new Date(now.getTime() - 30 * DAY_MS).toISOString(),
+    utcEnd: now.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sanitiser — no null / undefined / NaN in response
+// ---------------------------------------------------------------------------
+
+interface HourRow {
+  hour: string;
+  message_count: number;
+  unique_users: number;
+  cluster_count: number;
+}
+
+function sanitise(rows: unknown[]): HourRow[] {
+  return rows.map((raw: Record<string, unknown>) => ({
+    hour: new Date(raw.hour as string).toISOString(),
+    message_count: Number(raw.message_count) || 0,
+    unique_users: Number(raw.unique_users) || 0,
+    cluster_count: Number(raw.cluster_count) || 0,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Edge function
+// ---------------------------------------------------------------------------
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    await verifyDesktopAuth(req);
+    console.log("[activity] AUTH OK");
+
+    // dateFrom/dateTo kept for backward compat until Electron confirms from/to
+    const url = new URL(req.url);
+    const rawFrom =
+      url.searchParams.get("from") || url.searchParams.get("dateFrom");
+    const rawTo =
+      url.searchParams.get("to") || url.searchParams.get("dateTo");
+
+    const boundsResult = resolveBounds(rawFrom, rawTo);
+    if (typeof boundsResult === "string") {
+      return Response.json(
+        { ok: false, error: boundsResult },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    const { utcStart, utcEnd } = boundsResult;
+
+    const result = await admin.rpc("get_hourly_activity", {
+      p_start: utcStart,
+      p_end: utcEnd,
+    });
+    if (result.error) throw result.error;
+
+    const hours: HourRow[] = sanitise(result.data ?? []);
+
+    console.log("[activity] OK:", { hours: hours.length });
+
+    return Response.json(
+      { ok: true, data: { hours } },
+      { headers: corsHeaders },
+    );
+  } catch (err: unknown) {
+    return handleEdgeError(err);
+  }
+});

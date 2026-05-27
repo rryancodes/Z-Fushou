@@ -48,9 +48,15 @@ async function callLLMForSummary(systemPrompt, userContent) {
       }
 
       const json = await res.json();
-      const content = json.choices?.[0]?.message?.content;
-      
+      let content = json.choices?.[0]?.message?.content;
+
       if (!content) throw new Error('LLM returned empty content');
+
+      // Cloudflare Workers AI may return parsed JSON objects instead of strings.
+      // Normalize to string so downstream extractJSON() always receives a string.
+      if (typeof content === 'object') {
+        content = JSON.stringify(content);
+      }
       
       // Extract usage info
       const usage = json.usage || { total_tokens: 0 };
@@ -273,25 +279,11 @@ Respond with the JSON object now. Nothing else.`;
 
     return parsed;
   } catch (err) {
-    logger.error('topicSummarizer', `Failed to summarize "${topicLabel}"`, { error: err.message });
-
-    // Build a fallback summary from actual message content instead of generic label
-    const allMessages = segments.flatMap(s => s.messages || []);
-    const uniqueUsers = new Set(allMessages.map(m => m.username)).size;
-    const firstMessages = allMessages.slice(0, 5).map(m => m.content).filter(Boolean);
-    const fallbackSummary = firstMessages.length
-      ? `${topicLabel} — ${uniqueUsers} users discussed: ${firstMessages.join(' | ')}`
-      : `${topicLabel} discussion with ${uniqueUsers} users across ${segments.length} segment(s).`;
-
-    return {
-      summary: fallbackSummary,
-      key_issues: [],
-      unanswered_questions: [],
-      sentiment: 'neutral',
-      severity: 'medium',
-      tokensUsed: 0,
+    logger.error('topicSummarizer', `FAILED to summarize "${topicLabel}" — throwing, no silent fallback`, {
       error: err.message,
-    };
+      stack: err.stack,
+    });
+    throw err;
   }
 }
 

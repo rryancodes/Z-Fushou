@@ -1,4 +1,16 @@
 node_modules
 .env
+.env.*
 .next
 log.txt
+
+# IDE
+.vscode
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Supabase local
+supabase/.temp
+supabase/.branches

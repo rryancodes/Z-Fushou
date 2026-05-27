@@ -2,6 +2,8 @@ const {
   extractJSON,
   stripMarkdownFences,
   findBalancedJSON,
+  callLLMForSummary,
+  summarizeTopic,
 } = require('../topicSummarizer');
 
 // ---------------------------------------------------------------------------
@@ -178,5 +180,195 @@ describe('extractJSON', () => {
     if (result !== null) {
       expect(result).not.toContain('`');
     }
+  });
+
+  // --- CF Workers AI object content regression ---
+
+  it('handles JSON.stringified object content (CF Workers AI regression)', () => {
+    // CF Workers AI returns parsed objects, not strings. After our fix in callLLMForSummary,
+    // these get JSON.stringify'd before reaching extractJSON.
+    const obj = { summary: 'test', key_issues: ['a'], unanswered_questions: [], sentiment: 'frustrated', severity: 'high' };
+    const input = JSON.stringify(obj);
+    const result = extractJSON(input);
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result);
+    expect(parsed.summary).toBe('test');
+    expect(parsed.sentiment).toBe('frustrated');
+    expect(parsed.severity).toBe('high');
+    expect(parsed.key_issues).toEqual(['a']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// callLLMForSummary — object content normalization
+// ---------------------------------------------------------------------------
+describe('callLLMForSummary', () => {
+  let originalFetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('normalizes object content from CF Workers AI to string', async () => {
+    // Simulate CF Workers AI returning parsed JSON in content field
+    const responseObject = {
+      summary: 'Users report login failures',
+      key_issues: ['Authentication timeout', 'Session expiry'],
+      unanswered_questions: ['When will this be fixed?'],
+      sentiment: 'frustrated',
+      severity: 'high',
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: responseObject } }],
+        usage: { total_tokens: 150 },
+      }),
+      text: async () => JSON.stringify({}),
+    });
+
+    const result = await callLLMForSummary('system prompt', 'user content');
+
+    // Content should be a string after normalization
+    expect(typeof result.content).toBe('string');
+    // Should be parseable JSON
+    const parsed = JSON.parse(result.content);
+    expect(parsed.summary).toBe('Users report login failures');
+    expect(parsed.sentiment).toBe('frustrated');
+    expect(parsed.key_issues).toHaveLength(2);
+  });
+
+  it('preserves string content from LLM responses', async () => {
+    const responseString = '{"summary":"test","key_issues":[],"unanswered_questions":[],"sentiment":"neutral","severity":"medium"}';
+
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: responseString } }],
+        usage: { total_tokens: 50 },
+      }),
+      text: async () => JSON.stringify({}),
+    });
+
+    const result = await callLLMForSummary('system prompt', 'user content');
+    expect(typeof result.content).toBe('string');
+    expect(result.content).toBe(responseString);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// summarizeTopic — no silent fallback
+// ---------------------------------------------------------------------------
+describe('summarizeTopic', () => {
+  let originalFetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('throws on LLM failure instead of returning neutral/medium fallback', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 500,
+      ok: false,
+      text: async () => 'Internal Server Error',
+      json: async () => ({}),
+    });
+
+    const segments = [{
+      segmentIndex: 0,
+      startTimestamp: '2026-05-25T10:00:00Z',
+      endTimestamp: '2026-05-25T11:00:00Z',
+      messages: [
+        { username: 'user1', content: 'test message', timestamp: '2026-05-25T10:30:00Z', user_id: 'u1', message_id: 'm1' },
+      ],
+    }];
+
+    await expect(summarizeTopic('Test Topic', segments)).rejects.toThrow();
+  });
+
+  it('returns real sentiment and severity from object content', async () => {
+    // Simulate CF Workers AI returning a parsed JSON object
+    const responseObject = {
+      summary: 'Users are experiencing critical API failures',
+      key_issues: ['API returning 500 errors', 'Users cannot access their accounts'],
+      unanswered_questions: ['What is the ETA for the fix?'],
+      sentiment: 'frustrated',
+      severity: 'critical',
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: responseObject } }],
+        usage: { total_tokens: 200 },
+      }),
+      text: async () => JSON.stringify({}),
+    });
+
+    const segments = [{
+      segmentIndex: 0,
+      startTimestamp: '2026-05-25T10:00:00Z',
+      endTimestamp: '2026-05-25T11:00:00Z',
+      messages: [
+        { username: 'user1', content: 'API is down!', timestamp: '2026-05-25T10:30:00Z', user_id: 'u1', message_id: 'm1' },
+      ],
+    }];
+
+    const result = await summarizeTopic('API Outage', segments);
+
+    // Must NOT be the default neutral/medium
+    expect(result.sentiment).toBe('frustrated');
+    expect(result.severity).toBe('critical');
+    expect(result.key_issues).toHaveLength(2);
+    expect(result.key_issues[0]).toContain('500');
+    expect(result.unanswered_questions).toHaveLength(1);
+    expect(result.tokensUsed).toBe(200);
+  });
+
+  it('returns real key_issues and unanswered_questions (not empty)', async () => {
+    const responseObject = {
+      summary: 'Mixed discussion about new features',
+      key_issues: ['Feature request for dark mode', 'Bug in search functionality'],
+      unanswered_questions: ['When will dark mode be available?', 'Is the search bug being tracked?'],
+      sentiment: 'confused',
+      severity: 'medium',
+    };
+
+    global.fetch = jest.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: responseObject } }],
+        usage: { total_tokens: 150 },
+      }),
+      text: async () => JSON.stringify({}),
+    });
+
+    const segments = [{
+      segmentIndex: 0,
+      startTimestamp: '2026-05-25T10:00:00Z',
+      endTimestamp: '2026-05-25T11:00:00Z',
+      messages: [
+        { username: 'user1', content: 'any dark mode?', timestamp: '2026-05-25T10:30:00Z', user_id: 'u1', message_id: 'm1' },
+      ],
+    }];
+
+    const result = await summarizeTopic('Feature Request', segments);
+
+    expect(result.key_issues).toHaveLength(2);
+    expect(result.unanswered_questions).toHaveLength(2);
+    expect(result.sentiment).toBe('confused');
   });
 });
