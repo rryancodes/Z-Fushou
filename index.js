@@ -19,10 +19,10 @@ const MENTION_BRIEFING_ENABLED = process.env.MENTION_BRIEFING_ENABLED === 'true'
 const mentionBriefing = require('./lib/mentionBriefing');
 
 // ── Semantic pipeline scheduler (cron-based) ──────────────────────
-// Runs daily at 7:00 AM Beijing Time (Asia/Shanghai) via node-cron
+// Runs daily at 4:55 AM Beijing Time (Asia/Shanghai) via node-cron
 // Set PIPELINE_ENABLED=true to activate
 const PIPELINE_ENABLED = process.env.PIPELINE_ENABLED === 'true';
-const PIPELINE_CRON = process.env.PIPELINE_CRON || '0 7 * * *';       // default: 7:00 AM
+const PIPELINE_CRON = process.env.PIPELINE_CRON || '55 4 * * *';       // default: 4:55 AM
 const PIPELINE_TZ = process.env.PIPELINE_TZ || 'Asia/Shanghai';       // default: Beijing time
 let pipelineJob = null;
 
