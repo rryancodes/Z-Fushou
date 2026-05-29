@@ -178,11 +178,14 @@ async function summarizeTopic(topicLabel, segments) {
 
 ANALYSIS REQUIREMENTS:
 
-1. **Summary Paragraph** (3-5 sentences):
-   - What is the main topic/issue?
-   - What happened and when?
-   - Who was involved (number of users)?
-   - What is the current status?
+ 1. **Summary Paragraph** (5-10 sentences — be detailed and specific):
+    - What is the main topic/issue?
+    - What exactly are users talking about? Include specific details, problems, product names, error messages, feature names, and concrete examples from the conversation — not vague summaries.
+    - What happened and when?
+    - Who was involved (mention specific usernames when relevant)?
+    - What is the current status?
+    - If users are discussing an issue, describe the issue in detail — what they tried, what failed, what worked.
+    - If users are sharing feedback or requests, capture exactly what they want and why.
 
 2. **Key Issues** (list all identified problems):
    - Technical problems (errors, bugs, performance issues)
