@@ -1,0 +1,512 @@
+================================================================================
+                         PRIVACY POLICY
+================================================================================
+
+Effective Date: May 30, 2026
+Last Updated: May 30, 2026
+
+This Privacy Policy describes the data collection, storage, processing, and
+usage practices of the community analytics system ("the System") operated by
+the server administrators ("we", "us", "our") across monitored Discord server(s)
+("the Community").
+
+By sending any message in a monitored Discord channel, you acknowledge and
+consent to all practices described in this document. If you do not agree with
+any part of this policy, do not send messages in monitored channels.
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+The System is a silent monitoring tool deployed in specific Discord channels.
+It is NOT a public service. It is an internal analytics platform operated by
+the server administration team for the purpose of understanding community
+conversations, identifying recurring issues, tracking user sentiment, and
+generating actionable intelligence from community discussions.
+
+The System is completely invisible to users. It does not respond to messages.
+It does not send direct messages. It does not display a visible presence.
+It silently records, processes, and analyzes everything said in monitored
+channels, including threads within those channels.
+
+THERE IS NO OPT-OUT. If a channel is monitored, every non-bot, non-system
+message sent in that channel or its threads is captured. The only way to avoid
+data collection is to not send messages in monitored channels.
+
+
+================================================================================
+2. WHAT DATA WE COLLECT
+================================================================================
+
+We collect the following data points for EVERY message sent in a monitored
+channel or thread within a monitored channel:
+
+  2.1 MESSAGE CONTENT
+  -------------------
+  - The full, exact text content of every message you send
+  - This includes questions, complaints, opinions, code snippets, links,
+    personal experiences, troubleshooting details, and any other text
+  - If you edit a message after sending, we may capture both the original
+    and edited versions
+  - Discord message links (discord.com/channels/...) shared in messages
+  - URLs included in your messages
+
+  2.2 MESSAGE METADATA
+  --------------------
+  - Discord Message ID (unique identifier for the message)
+  - Channel ID (which channel the message was sent in)
+  - Server/Guild ID (which Discord server the message belongs to)
+  - Thread ID (if the message was sent inside a thread)
+  - Exact timestamp of when the message was sent (UTC)
+  - Whether the message is a reply to another message, including:
+      - The Message ID of the message being replied to
+      - The Channel ID of the message being replied to
+      - The Server ID of the message being replied to
+
+  2.3 USER IDENTITY DATA
+  -----------------------
+  - Discord User ID (your permanent, unique Discord account identifier)
+  - Discord Username (your display name at the time the message was sent)
+  - These are collected for every user who sends a message in a monitored
+    channel, regardless of whether they are aware of the monitoring
+
+  2.4 ATTACHMENT DATA
+  -------------------
+  - For every file, image, or attachment included with a message:
+      - Discord Attachment ID
+      - Filename (original file name as uploaded)
+      - CDN URL (Discord's hosted URL for the file)
+      - File size in bytes
+      - Content type (MIME type: image/png, text/plain, etc.)
+  - We store the METADATA about attachments. We do not download, re-host,
+    or store copies of the actual file contents.
+
+  2.5 MENTION DATA
+  ----------------
+  - Every Discord user mention (@username) in your messages is extracted
+  - We collect the Discord User IDs of all mentioned users
+  - If a mentioned user is on our monitored list (administrators, support
+    staff, ambassadors), the message is flagged as a "monitored mention"
+  - The full list of mentioned user IDs is stored alongside the message
+  - Mentioned usernames are resolved and embedded into message content
+    during processing (e.g., <@123456> becomes <mentioned_username>)
+
+  2.6 BACKFILL DATA
+  -----------------
+  - When the System starts or restarts, it automatically fetches up to 100
+    recent messages from each monitored channel that were sent while the
+    System was offline
+  - This means messages sent during downtime ARE STILL CAPTURED when the
+    System comes back online
+
+
+================================================================================
+3. HOW YOUR DATA IS PROCESSED
+================================================================================
+
+Your data goes through multiple automated processing stages. At no point is
+human review involved in the initial pipeline. All processing is automated.
+
+  3.1 MESSAGE CLEANING
+  ---------------------
+  Every raw message is processed through an automated cleaning pipeline:
+  - Noise filtering: Messages identified as noise (single characters, emoji-
+    only, very short acknowledgments like "ok", "thanks", "y", duplicate
+    messages within 60 seconds) are flagged and excluded from analysis but
+    STILL STORED in the raw data table
+  - Mention normalization: Discord mention codes (<@user_id>) are replaced
+    with actual usernames (<mentioned_username>) using a database lookup
+  - Text normalization: Messages are stripped of markdown formatting,
+    emojis are removed, text is lowercased, URLs are stripped, and
+    whitespace is collapsed
+  - The normalized version is stored separately from the original raw message
+  - BOTH the original raw message AND the cleaned version are retained
+
+  3.2 AI-POWERED ANALYSIS
+  ------------------------
+  Cleaned messages are processed through a nightly automated analysis pipeline
+  that runs at 4:55 AM Beijing Time (Asia/Shanghai):
+
+  a) Topic Boundary Detection
+     - Messages are grouped by date
+     - An algorithm analyzes message similarity to detect where conversation
+       topics shift, splitting discussions into topic segments
+
+  b) Topic Classification
+     - An AI model (large language model) reads message segments and assigns
+       topic labels (e.g., "API billing errors", "subscription complaints")
+     - The AI invents its own category labels based on what it observes
+
+  c) AI Summarization
+     - For each identified topic, an AI model generates a detailed summary
+       including:
+       * A 5-10 sentence summary of what users are discussing
+       * Key issues identified in the conversation
+       * Unanswered questions that received no resolution
+       * Sentiment classification (frustrated, confused, neutral, satisfied)
+       * Severity assessment (critical, high, medium, low)
+       * Specific usernames may be included in summaries
+
+  d) Embedding and Vector Storage
+     - Message segments are converted into numerical vector representations
+       (embeddings) using an AI model
+     - These vectors are stored in a vector database (Qdrant) for semantic
+       search and similarity matching
+     - The full text of message segments is stored alongside the vectors
+
+  3.3 MONITORED MENTION ANALYSIS
+  -------------------------------
+  When a message mentions a monitored user (admin, support staff, ambassador):
+  - The System automatically collects surrounding context:
+      * 5 messages sent before the mention in the same channel/thread
+      * 3 messages sent after the mention (within a 5-minute window)
+      * The last 3 messages from the same author (within 30 minutes)
+      * If the mention is a reply, the parent message being replied to
+  - All collected context messages are sent to an AI model for summarization
+  - The generated summary is stored alongside the original message
+  - This happens automatically every 60 seconds
+
+  3.4 ENGAGEMENT METRICS
+  ----------------------
+  The System calculates and stores:
+  - Message count per topic
+  - Number of unique users per topic
+  - Messages per hour (posting frequency)
+  - Time ranges of discussions
+  - Hourly activity patterns (aggregated via database functions)
+
+
+================================================================================
+4. WHERE YOUR DATA IS STORED
+================================================================================
+
+Your data is stored across multiple systems and locations:
+
+  4.1 PRIMARY DATABASE (Supabase / PostgreSQL)
+  ---------------------------------------------
+  Location: Supabase-hosted PostgreSQL database (cloud-hosted)
+
+  Tables:
+  - community_messages
+    Stores ALL raw message data including: message_id, channel_id, guild_id,
+    user_id, username, content, timestamp, thread_id, attachments metadata,
+    is_cleaned status, cleaned_message_id link, is_monitored_mention flag,
+    mentioned_user_ids array, mention_summary (AI-generated), and
+    mention_summary_generated_at timestamp.
+
+  - community_messages_clean
+    Stores cleaned/normalized message data: message_id, channel_id, user_id,
+    username, normalized content, timestamp, and semantic_processed_at.
+
+  - pipeline_clusters
+    Stores topic groupings: topic labels, message counts, user counts,
+    time ranges, boundary detection scores, and processing dates.
+
+  - pipeline_cluster_messages
+    Links individual messages to topic clusters, storing message_id,
+    cluster_id, context_block_id, channel_id, and user_id.
+
+  - pipeline_topic_summaries
+    Stores AI-generated summaries: summary text, key issues list,
+    unanswered questions list, sentiment rating, severity rating,
+    engagement metrics, and token usage data.
+
+  - message_ingestion_state
+    Stores processing checkpoints and retention cleanup timestamps.
+
+  4.2 VECTOR DATABASE (Qdrant)
+  -----------------------------
+  Location: Qdrant cloud-hosted vector database
+
+  Stores numerical vector representations (embeddings) of message segments
+  along with payloads containing: anchor message IDs, segment indices,
+  boundary scores, all message IDs in the segment, channel IDs, timestamps,
+  and the FULL TEXT of message segments.
+
+  4.3 AI PROCESSING SERVICES
+  ---------------------------
+  Location: Cloudflare (Workers AI platform)
+
+  When messages are sent to AI models for classification, summarization,
+  or embedding generation, the message content and metadata are transmitted
+  to Cloudflare's AI infrastructure. We do not control Cloudflare's data
+  retention policies for API inputs and outputs.
+
+  4.4 JOB QUEUE (Redis)
+  ----------------------
+  Location: Redis instance (cloud-hosted)
+
+  Stores:
+  - Batch processing state (pipeline run status, timestamps)
+  - Distributed lock state (preventing concurrent pipeline runs)
+  - Last batch cursor (timestamp of last processed message)
+  - BullMQ job queues for issue processing, forwarding, notifications,
+    and reminders
+
+  Redis data is ephemeral but may persist until explicitly cleared or
+  expired by the application.
+
+
+================================================================================
+5. DATA RETENTION
+================================================================================
+
+  5.1 RAW MESSAGES (community_messages)
+  --------------------------------------
+  Raw messages are retained for a minimum of 7 days after ingestion.
+  After 7 days, raw messages that have been successfully cleaned are
+  eligible for automatic deletion by the retention cleanup job, which
+  runs once every 24 hours.
+
+  HOWEVER: Only raw messages that have a matching cleaned row in
+  community_messages_clean are deleted. If cleaning fails for any reason,
+  the raw message is retained indefinitely.
+
+  5.2 CLEANED MESSAGES (community_messages_clean)
+  ------------------------------------------------
+  Cleaned messages are retained INDEFINITELY. There is no automatic
+  deletion mechanism for cleaned messages. They persist forever as the
+  primary dataset for analysis and reporting.
+
+  5.3 AI-GENERATED DATA
+  ----------------------
+  Topic clusters, summaries, sentiment ratings, severity assessments,
+  and engagement metrics are retained INDEFINITELY. When the nightly
+  pipeline re-runs for a specific date, that date's data is deleted and
+  regenerated, but historical data for other dates is never deleted.
+
+  5.4 VECTOR DATA (Qdrant)
+  -------------------------
+  Vector embeddings and their associated text payloads are retained
+  INDEFINITELY. There is no automatic expiration or deletion mechanism.
+
+  5.5 SUMMARY OF RETENTION
+  -------------------------
+  - Raw messages: 7+ days (then eligible for deletion if cleaned)
+  - Cleaned messages: PERMANENT - never deleted
+  - AI summaries: PERMANENT - never deleted
+  - Topic clusters: PERMANENT - replaced only on re-run for same date
+  - Vector embeddings: PERMANENT - never deleted
+  - Redis state: Ephemeral but may persist
+
+
+================================================================================
+6. DATA SHARING AND ACCESS
+================================================================================
+
+  6.1 WHO CAN ACCESS YOUR DATA
+  -----------------------------
+  Access to collected data is restricted to:
+  - Server administrators who operate the System
+  - Authorized users of the desktop analytics dashboard (authenticated
+    via external JWT-based authentication)
+  - The desktop dashboard exposes cleaned messages, AI summaries,
+    topic clusters, activity metrics, and flagged mentions through
+    password-protected API endpoints
+
+  6.2 THIRD-PARTY SERVICES
+  -------------------------
+  Your data is transmitted to and processed by the following third parties:
+  - Supabase (database hosting and API)
+  - Cloudflare (AI model inference for classification, summarization,
+    and embedding generation)
+  - Qdrant (vector database hosting)
+  - Redis provider (job queue and state management)
+  - Railway (application hosting)
+
+  Each third party has their own privacy policy and data handling practices
+  that are beyond our control.
+
+  6.3 NO PUBLIC DISCLOSURE
+  -------------------------
+  We do not publicly publish individual messages, usernames, or user IDs.
+  However, aggregated data (topic trends, sentiment summaries, activity
+  charts) derived from your messages may be shared internally or with
+  stakeholders at our discretion.
+
+
+================================================================================
+7. YOUR RIGHTS (OR LACK THEREOF)
+================================================================================
+
+  7.1 NO RIGHT TO DELETION
+  -------------------------
+  AS OF NOW, THERE IS NO MECHANISM FOR USERS TO REQUEST DELETION OF THEIR
+  DATA. We do not provide:
+  - A way to request removal of your messages from our database
+  - A way to request removal of AI-generated summaries about your messages
+  - A way to request removal of your vector embeddings
+  - A way to request removal of your username or user ID from our records
+  - A way to opt out of data collection within monitored channels
+
+  This applies to ALL data: raw messages, cleaned messages, AI summaries,
+  topic classifications, sentiment ratings, vector embeddings, and metadata.
+
+  7.2 NO RIGHT TO ACCESS
+  -----------------------
+  We do not provide a mechanism for individual users to:
+  - View what data we hold about them
+  - Download or export their data
+  - Request a copy of AI-generated analyses about their messages
+
+  7.3 NO RIGHT TO CORRECTION
+  ---------------------------
+  There is no mechanism to:
+  - Correct or edit messages after they have been captured
+  - Update your username or user ID in historical records
+  - Modify AI-generated summaries or classifications
+
+  7.4 NO CONSENT MECHANISM
+  -------------------------
+  The System does not require individual consent beyond what is described
+  in this policy. By sending a message in a monitored channel, you are
+  deemed to have consented to all data practices described herein.
+
+  We make no representation that this data collection complies with any
+  specific privacy regulation (GDPR, CCPA, or otherwise). This is an
+  internal tool operating on a private Discord server. Users participate
+  in the community voluntarily.
+
+
+================================================================================
+8. DATA SECURITY
+================================================================================
+
+  8.1 MEASURES IN PLACE
+  ---------------------
+  - Database access requires service-level API keys
+  - API endpoints for the dashboard require JWT authentication
+  - Environment variables (API keys, tokens) are stored as secrets, not
+    in source code
+  - All data transmission to third-party AI services uses HTTPS
+  - Database queries use parameterized operations to prevent injection
+
+  8.2 LIMITATIONS
+  ----------------
+  - Messages are stored in plaintext in the database (not encrypted at rest)
+  - User IDs and usernames are stored as-is (not anonymized or hashed)
+  - AI model inputs (including message content) are sent to third-party
+    servers where we have no visibility into logging or retention
+  - The vector database stores full message text alongside embeddings
+  - We rely on the security practices of our hosting providers (Supabase,
+    Cloudflare, Qdrant, Railway) and cannot guarantee their practices
+
+
+================================================================================
+9. MONITORING SPECIFICS
+================================================================================
+
+  9.1 SCOPE OF MONITORING
+  ------------------------
+  - Monitoring is limited to SPECIFIC CHANNELS configured by administrators
+  - NOT all channels in the Discord server are monitored
+  - Only channels listed in the System's configuration are captured
+  - Threads inside monitored channels ARE monitored
+  - Direct messages are NOT monitored
+  - Voice channels are NOT monitored
+
+  9.2 WHAT IS CAPTURED
+  --------------------
+  - All non-bot, non-system messages with text content OR attachments
+  - Messages from ALL users in monitored channels, regardless of role,
+    membership status, or awareness of the monitoring
+  - Messages sent while the System was temporarily offline are captured
+    on restart (up to 100 recent messages per channel)
+
+  9.3 WHAT IS NOT CAPTURED
+  -------------------------
+  - Bot messages (messages from Discord bots)
+  - System messages (join notifications, pin notifications)
+  - Empty messages with no content and no attachments
+  - Messages sent before the configured minimum date boundary
+  - Messages in channels that are not in the monitoring configuration
+
+
+================================================================================
+10. AI ANALYSIS DETAILS
+================================================================================
+
+  10.1 WHAT AI DOES WITH YOUR MESSAGES
+  -------------------------------------
+  - Reads your messages to determine what topic they belong to
+  - Generates summaries that may QUOTE or PARAPHRASE your exact words
+  - Classifies your messages with sentiment labels (frustrated, confused,
+    neutral, satisfied)
+  - Assesses severity of issues discussed (critical, high, medium, low)
+  - Extracts key issues and unanswered questions from conversations
+  - Creates numerical representations of your messages for similarity search
+
+  10.2 AI MODEL PROVIDERS
+  -------------------------
+  - Large language model (LLM) for classification and summarization:
+    hosted on Cloudflare Workers AI
+  - Embedding model for vector representations: hosted on Cloudflare
+  - We do not control how these providers handle input data after processing
+
+  10.3 ACCURACY DISCLAIMER
+  -------------------------
+  - AI-generated summaries, classifications, sentiment ratings, and severity
+    assessments may be INACCURATE, INCOMPLETE, or MISLEADING
+  - We make no guarantees about the accuracy of AI interpretations of your
+    messages
+  - AI summaries may misrepresent your intent, tone, or the content of
+    your messages
+
+
+================================================================================
+11. CHANGES TO THIS POLICY
+================================================================================
+
+We reserve the right to modify this Privacy Policy at any time without
+individual notice to users. Changes take effect immediately upon update.
+Continued participation in monitored channels constitutes acceptance of the
+revised policy.
+
+We may:
+  - Expand the scope of data collection
+  - Add new processing capabilities
+  - Change data retention periods (including making them longer)
+  - Share data with additional third parties
+  - Reduce or eliminate any user rights described herein
+
+
+================================================================================
+12. CONTACT
+================================================================================
+
+For questions or concerns about this Privacy Policy, contact the server
+administration team through the Discord server.
+
+We will respond at our discretion. There is no guaranteed response time
+or obligation to address individual inquiries regarding data practices.
+
+
+================================================================================
+13. ACKNOWLEDGMENT
+================================================================================
+
+By sending any message in a monitored Discord channel, you explicitly
+acknowledge that:
+
+  1. Your messages, username, user ID, and message metadata are being
+     recorded and stored indefinitely
+
+  2. Your messages are being processed by automated AI systems that
+     generate summaries, classifications, and ratings
+
+  3. Your data is transmitted to third-party services for processing
+     and storage
+
+  4. You have NO ability to delete, modify, or access your stored data
+
+  5. Your data is retained indefinitely in multiple systems and locations
+
+  6. This monitoring is invisible and continuous
+
+  7. The only way to avoid data collection is to not send messages in
+     monitored channels
+
+
+================================================================================
+END OF PRIVACY POLICY
+================================================================================

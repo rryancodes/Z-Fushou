@@ -107,10 +107,23 @@ Deno.serve(async (req) => {
 
     const hours: HourRow[] = sanitise(result.data ?? []);
 
-    console.log("[activity] OK:", { hours: hours.length });
+    // Count truly unique users across the entire date range (avoids
+    // double-counting users who post in multiple hours). Per-hour
+    // unique_users in the hours array remains correct for chart bars.
+    const totalUsersResult = await admin
+      .from("community_messages")
+      .select("user_id")
+      .gte("created_at", utcStart)
+      .lte("created_at", utcEnd);
+    if (totalUsersResult.error) throw totalUsersResult.error;
+    const totalUniqueUsers = new Set(
+      (totalUsersResult.data ?? []).map((r: { user_id: string }) => r.user_id),
+    ).size;
+
+    console.log("[activity] OK:", { hours: hours.length, total_unique_users: totalUniqueUsers });
 
     return Response.json(
-      { ok: true, data: { hours } },
+      { ok: true, data: { hours, total_unique_users: totalUniqueUsers } },
       { headers: corsHeaders },
     );
   } catch (err: unknown) {

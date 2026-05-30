@@ -1,0 +1,567 @@
+================================================================================
+                      TERMS OF SERVICE
+================================================================================
+
+Effective Date: May 30, 2026
+Last Updated: May 30, 2026
+
+These Terms of Service ("Terms") govern your participation in the Discord
+community ("the Community") and your use of any related services, dashboards,
+APIs, or tools ("the Services") operated by the server administration team
+("we", "us", "our").
+
+By joining the Community, sending any message, interacting with any channel,
+or using any of the Services, you agree to be bound by these Terms in their
+entirety. If you do not agree, you must leave the Community immediately and
+refrain from using any Services.
+
+
+================================================================================
+1. DEFINITIONS
+================================================================================
+
+"Community" refers to the Discord server(s) where our monitoring and analytics
+system is deployed.
+
+"Services" refers to all tools, dashboards, automated systems, bots, APIs,
+data processing pipelines, and analytics platforms operated by the
+administration team in connection with the Community.
+
+"User" refers to any individual who joins, participates in, views, or
+interacts with the Community or Services in any capacity.
+
+"Monitoring System" refers to the automated data collection and analysis
+platform that silently records and processes messages in designated channels.
+
+"Content" refers to any text, links, files, images, attachments, reactions,
+or other material posted or shared within the Community.
+
+"Dashboard" refers to any internal analytics interface, desktop application,
+or reporting tool that displays processed Community data.
+
+
+================================================================================
+2. ACCEPTANCE OF TERMS
+================================================================================
+
+2.1 BINDING AGREEMENT
+---------------------
+These Terms constitute a legally binding agreement between you and the
+administration team. By sending any message in the Community, you confirm
+that you have read, understood, and agree to be bound by these Terms.
+
+2.2 CHANGES TO TERMS
+---------------------
+We reserve the right to update, modify, or completely replace these Terms
+at any time, for any reason, without prior notice to individual users.
+Changes take effect immediately upon publication. Your continued
+participation in the Community after changes are made constitutes
+acceptance of the revised Terms.
+
+We are not obligated to:
+  - Notify users individually of changes
+  - Provide a grace period for changes
+  - Allow users to opt out of changes
+  - Maintain previous versions of Terms
+
+2.3 DISCORD'S OWN TERMS
+-------------------------
+These Terms are in addition to, not a replacement for, Discord's own Terms
+of Service and Community Guidelines. You remain bound by Discord's rules
+while using their platform. In the event of a conflict between these Terms
+and Discord's Terms, Discord's Terms prevail regarding platform usage, but
+these Terms prevail regarding our Services and data practices.
+
+
+================================================================================
+3. NATURE OF THE SERVICES
+================================================================================
+
+3.1 WHAT THE SERVICES DO
+-------------------------
+The Services include an automated monitoring and analysis system that:
+
+  a) Silently records all messages sent in designated channels
+  b) Stores message content, user identities, and metadata in external databases
+  c) Processes messages through automated cleaning and normalization
+  d) Uses artificial intelligence to analyze conversations, detect topics,
+     generate summaries, and classify the nature and urgency of discussions
+  e) Tracks user activity patterns, posting frequency, and engagement metrics
+  f) Generates automated reports on community trends, issues, and sentiment
+  g) Flags and summarizes messages that mention specific monitored users
+  h) Stores mathematical representations of messages for search and retrieval
+
+3.2 NO WARRANTY ON SERVICE QUALITY
+-----------------------------------
+THE SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF
+ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO:
+
+  - Accuracy of AI-generated summaries, classifications, or analysis
+  - Reliability or uptime of the monitoring system
+  - Completeness of data collection
+  - Correctness of topic detection or grouping
+  - Appropriateness of sentiment or severity ratings
+  - Availability of the dashboard or API endpoints
+  - Preservation of data (data loss may occur)
+  - Fitness for any particular purpose
+
+We make no guarantees that the Services will function correctly, be
+available at any given time, or produce accurate results. AI-generated
+analysis may be incorrect, misleading, or incomplete at any time.
+
+3.3 INVISIBLE OPERATION
+-------------------------
+The monitoring system operates silently. It does not:
+  - Respond to messages
+  - Indicate which channels are monitored
+  - Provide real-time feedback to users
+  - Display a visible online presence distinct from normal operation
+
+Users should assume that ANY channel in the Community MAY be monitored
+at ANY TIME without explicit indication.
+
+
+================================================================================
+4. USER CONDUCT RULES
+================================================================================
+
+4.1 ACCEPTABLE USE
+------------------
+When participating in the Community, you agree to:
+
+  a) Be respectful to other community members and administrators
+  b) Stay on topic for the relevant channel
+  c) Report bugs, issues, and feedback through designated channels
+  d) Respect intellectual property rights when sharing content
+  e) Comply with all applicable laws and regulations
+  f) Not attempt to circumvent, disable, or interfere with the monitoring system
+
+4.2 PROHIBITED CONDUCT
+-----------------------
+You are STRICTLY PROHIBITED from:
+
+  a) ATTEMPTING TO DISCOVER WHICH CHANNELS ARE MONITORED
+     Using any technique (testing, probing, message analysis) to determine
+     the scope or configuration of the monitoring system is prohibited.
+
+  b) ATTEMPTING TO DISABLE OR INTERFERE WITH THE MONITORING SYSTEM
+     This includes flooding channels with messages, sending specially crafted
+     content designed to break the AI analysis, exploiting bugs in the system,
+     or any other interference.
+
+  c) REVERSE ENGINEERING THE SERVICES
+     You may not attempt to reverse engineer, decompile, disassemble, or
+     otherwise analyze the monitoring system, dashboard, APIs, or any
+     component of the Services.
+
+  d) UNAUTHORIZED ACCESS
+     You may not attempt to access the dashboard, API endpoints, databases,
+     or any other component of the Services without explicit authorization.
+     Unauthorized access attempts will be treated as a security violation.
+
+  e) HARASSMENT AND ABUSE
+     Harassing, threatening, doxxing, or abusing other community members,
+     administrators, or staff is prohibited. This includes targeted harassment
+     through repeated mentions, personal attacks, or coordinated behavior.
+
+  f) SPAM AND FLOODING
+     Sending repetitive, meaningless, or excessive messages in any channel
+     is prohibited. This includes messages designed to pollute the analytics
+     data or overwhelm the monitoring system.
+
+  g) ILLEGAL CONTENT
+     Sharing content that violates applicable laws, including but not limited
+     to: illegal material, copyrighted content without authorization, personal
+     information of others without consent, malware, or exploitative content.
+
+  h) IMPERSONATION
+     Impersonating administrators, staff, or other users is prohibited.
+
+  i) COORDINATED MANIPULATION
+     Coordinating with other users to manipulate analytics, game the
+     monitoring system, artificially inflate or suppress topic detection,
+     or otherwise interfere with the accuracy of the Services.
+
+  j) SHARING SYSTEM OUTPUTS
+     You may not share, distribute, or publish any outputs from the Services
+     (summaries, analysis, dashboard data) without explicit written permission
+     from the administration team.
+
+4.3 CONSEQUENCES OF VIOLATIONS
+-------------------------------
+Violations of these conduct rules may result in any combination of:
+
+  - Warning (private or public, at our discretion)
+  - Temporary muting or restriction from specific channels
+  - Temporary ban from the Community
+  - Permanent ban from the Community
+  - Reporting to Discord's Trust & Safety team
+  - Legal action where applicable (see Section 9)
+
+We reserve the right to take any action we deem appropriate for any behavior
+we consider harmful, disruptive, or contrary to the spirit of these Terms,
+even if the specific behavior is not explicitly listed above.
+
+4.4 APPEALS
+-----------
+Any disciplinary action may be appealed by contacting the administration team.
+We will review appeals at our sole discretion. There is no guaranteed timeline
+for appeal review, and all decisions are final.
+
+
+================================================================================
+5. INTELLECTUAL PROPERTY
+================================================================================
+
+5.1 YOUR CONTENT
+-----------------
+By sending messages in the Community, you retain ownership of your original
+content. However, you grant us a perpetual, irrevocable, worldwide,
+royalty-free, non-exclusive license to:
+
+  - Store your messages and associated metadata indefinitely
+  - Process your messages through automated AI systems
+  - Generate derivative works (summaries, classifications, ratings) from
+    your messages
+  - Use your messages and derived data for analytics, reporting, and
+    internal decision-making
+  - Retain your messages in database systems, vector databases, and backups
+
+This license survives even if you leave the Community, delete your Discord
+account, or request removal from the Community.
+
+5.2 DERIVED WORKS
+------------------
+All AI-generated content (summaries, topic labels, classifications, sentiment
+ratings, severity assessments, engagement metrics, and any other analysis
+produced by the Services) is the exclusive property of the administration
+team. You have no ownership interest in or control over how your messages
+are analyzed, categorized, or summarized.
+
+5.3 THE SERVICES
+-----------------
+All software, algorithms, configurations, dashboards, APIs, documentation,
+and infrastructure comprising the Services are the exclusive property of the
+administration team. You have no right to access, use, copy, modify, or
+distribute any component of the Services beyond what is explicitly
+permitted by these Terms.
+
+
+================================================================================
+6. LIMITATION OF LIABILITY
+================================================================================
+
+6.1 NO LIABILITY FOR DATA COLLECTION
+--------------------------------------
+WE ARE NOT LIABLE FOR ANY CONSEQUENCES ARISING FROM THE COLLECTION, STORAGE,
+PROCESSING, OR ANALYSIS OF YOUR MESSAGES. This includes but is not limited to:
+
+  - Emotional distress from knowing your messages are monitored
+  - Reputational harm from AI-generated summaries or classifications
+  - Professional consequences from data retention
+  - Privacy violations resulting from third-party data processing
+  - Inaccurate AI characterizations of your statements or intent
+
+6.2 NO LIABILITY FOR SERVICE FAILURES
+---------------------------------------
+WE ARE NOT LIABLE FOR:
+
+  - Any loss of data, messages, or analysis results
+  - Downtime, outages, or unavailability of the Services
+  - Incorrect AI analysis, misclassification, or inaccurate summaries
+  - Failure to capture messages during system downtime
+  - Data corruption, loss, or unauthorized access
+  - Any bugs, errors, or defects in the monitoring system
+  - Third-party service failures (database hosting, AI providers, etc.)
+  - Loss of access to the Community for any reason
+
+6.3 NO LIABILITY FOR USER ACTIONS
+-----------------------------------
+We are not responsible for:
+
+  - What other users say or share in the Community
+  - How users interpret AI-generated analysis
+  - Actions taken by users based on information in the Community
+  - Discord's own enforcement actions or platform issues
+  - Any disputes between users
+
+6.4 MAXIMUM LIABILITY
+----------------------
+IN NO EVENT SHALL OUR TOTAL AGGREGATE LIABILITY TO YOU EXCEED ZERO DOLLARS
+($0.00). THIS MEANS WE ARE NOT FINANCIALLY LIABLE TO YOU UNDER ANY
+CIRCUMSTANCE, INCLUDING BUT NOT LIMITED TO:
+
+  - Direct damages
+  - Indirect damages
+  - Consequential damages
+  - Incidental damages
+  - Punitive damages
+  - Special damages
+  - Loss of profits, data, goodwill, or reputation
+  - Any other form of damages
+
+THIS LIMITATION APPLIES REGARDLESS OF:
+  - The legal theory pursued (contract, tort, negligence, strict liability)
+  - Whether WE WERE ADVISED of the possibility of damages
+  - WHETHER DAMAGES WERE FORESEEABLE
+
+6.5 ASSUMPTION OF RISK
+-----------------------
+BY PARTICIPATING IN THE COMMUNITY, YOU ASSUME ALL RISKS associated with:
+  - Having your messages recorded and analyzed
+  - Having your statements interpreted by AI systems
+  - Having your data stored indefinitely in multiple systems
+  - Having your data transmitted to third-party services
+  - The possibility of data breaches or unauthorized access
+
+
+================================================================================
+7. INDEMNIFICATION
+================================================================================
+
+You agree to indemnify, defend, and hold harmless the administration team
+and any affiliated parties from and against any and all claims, damages,
+losses, costs, expenses (including reasonable legal fees), and liabilities
+arising from or related to:
+
+  a) Your use of the Community or Services
+  b) Your violation of these Terms
+  c) Your violation of any applicable law or regulation
+  d) Content you post or share in the Community
+  e) Your interaction with other users
+  f) Any attempt to disrupt, interfere with, or gain unauthorized access
+     to the Services
+  g) Any claim that your content infringes on third-party rights
+
+This indemnification obligation survives the termination of these Terms
+and your departure from the Community.
+
+
+================================================================================
+8. DATA AND PRIVACY
+================================================================================
+
+8.1 PRIVACY POLICY
+-------------------
+Your data collection, processing, and storage practices are described in
+our separate Privacy Policy, which is incorporated into these Terms by
+reference. You acknowledge that you have read and understood the Privacy
+Policy.
+
+8.2 KEY ACKNOWLEDGMENTS
+------------------------
+By using the Community, you acknowledge:
+
+  a) All messages in monitored channels are recorded
+  b) Messages are processed by automated AI systems
+  c) Data is stored indefinitely across multiple systems
+  d) Data is transmitted to third-party services
+  e) There is NO mechanism to delete your data
+  f) There is NO mechanism to opt out within monitored channels
+  g) AI analysis of your messages may be inaccurate
+  h) The monitoring system is invisible and continuous
+
+
+================================================================================
+9. DISPUTE RESOLUTION
+================================================================================
+
+9.1 INFORMAL RESOLUTION
+------------------------
+In the event of any dispute, claim, or controversy arising from or related
+to these Terms, the Community, or the Services, you agree to first attempt
+to resolve the matter by contacting the administration team through the
+Discord server. We will attempt to resolve the dispute informally within
+30 days.
+
+9.2 BINDING ARBITRATION
+------------------------
+If the dispute cannot be resolved informally within 30 days, you agree that
+the dispute shall be resolved through binding arbitration administered by
+a mutually agreed-upon arbitrator. If no agreement can be reached on an
+arbitrator within 15 days, either party may request arbitration through
+a recognized arbitration service.
+
+ARBITRATION RULES:
+  - The arbitration shall be conducted in English
+  - The arbitration shall take place remotely (via video conference or
+    written submissions) unless both parties agree otherwise
+  - The arbitrator's decision shall be final and binding
+  - Judgment on the arbitration award may be entered in any court of
+    competent jurisdiction
+  - The arbitrator shall have the authority to award any remedies available
+    under applicable law
+
+9.3 WAIVER OF CLASS ACTIONS
+-----------------------------
+YOU AGREE THAT ANY DISPUTE RESOLUTION PROCEEDINGS WILL BE CONDUCTED ONLY ON
+AN INDIVIDUAL BASIS AND NOT IN A CLASS, CONSOLIDATED, OR REPRESENTATIVE
+ACTION. You waive any right to:
+
+  - Participate in a class action lawsuit
+  - Participate in a class-wide arbitration
+  - Consolidate your claims with those of other users
+  - Serve as a representative or named plaintiff in any proceeding
+
+Any claim resolved through arbitration or litigation will be limited to
+your individual circumstances and will not affect other users.
+
+9.4 WAIVER OF JURY TRIAL
+--------------------------
+YOU HEREBY WAIVE ANY RIGHT TO A JURY TRIAL in connection with any action
+or litigation arising from or related to these Terms, the Community, or
+the Services.
+
+9.5 GOVERNING LAW
+------------------
+These Terms shall be governed by and construed in accordance with the laws
+of the jurisdiction in which the administration team is based, without
+regard to its conflict of law principles. For the purposes of these Terms,
+the governing jurisdiction shall be determined at our sole discretion.
+
+9.6 SURVIVAL
+------------
+The following sections survive the termination of these Terms or your
+departure from the Community:
+  - Section 5 (Intellectual Property)
+  - Section 6 (Limitation of Liability)
+  - Section 7 (Indemnification)
+  - Section 8 (Data and Privacy)
+  - Section 9 (Dispute Resolution)
+
+9.7 ATTORNEY FEES
+------------------
+In any dispute arising from these Terms, each party shall bear its own
+attorney fees, costs, and expenses, regardless of the outcome, UNLESS
+the arbitrator or court determines that one party acted in bad faith.
+
+
+================================================================================
+10. TERMINATION
+================================================================================
+
+10.1 TERMINATION BY US
+-----------------------
+We may terminate or restrict your access to the Community at any time,
+for any reason or no reason, without prior notice or explanation. This
+includes but is not limited to:
+
+  - Ban from the Community (temporary or permanent)
+  - Removal from specific channels
+  - Restriction of messaging privileges
+  - Blocking of your Discord account from the server
+
+10.2 TERMINATION BY YOU
+-------------------------
+You may terminate these Terms at any time by leaving the Community and
+ceasing all use of the Services. However:
+
+  a) Termination does NOT delete any data already collected
+  b) Termination does NOT revoke the license granted in Section 5
+  c) Data collected prior to termination is retained indefinitely
+  d) AI analysis generated from your messages is retained indefinitely
+
+10.3 EFFECT OF TERMINATION
+---------------------------
+Upon termination:
+  - All rights granted to you under these Terms immediately cease
+  - Our obligations under these Terms cease (except surviving sections)
+  - Any data collected remains in our systems subject to the Privacy Policy
+  - You must stop using the Services immediately
+
+
+================================================================================
+11. GENERAL PROVISIONS
+================================================================================
+
+11.1 ENTIRE AGREEMENT
+-----------------------
+These Terms, together with the Privacy Policy, constitute the entire
+agreement between you and the administration team regarding the use of
+the Community and Services. They supersede all prior or contemporaneous
+agreements, understandings, or communications, whether written or oral.
+
+11.2 SEVERABILITY
+-------------------
+If any provision of these Terms is found to be unenforceable or invalid
+by a court or arbitrator, that provision shall be limited or eliminated
+to the minimum extent necessary, and the remaining provisions shall
+remain in full force and effect.
+
+11.3 WAIVER
+-------------
+Our failure to enforce any right or provision of these Terms shall not
+constitute a waiver of that right or provision. Any waiver of any
+provision of these Terms will be effective only if in writing and signed
+by the administration team.
+
+11.4 ASSIGNMENT
+-----------------
+You may not assign or transfer these Terms or your rights or obligations
+hereunder, in whole or in part, without our prior written consent. We may
+assign our rights and obligations under these Terms without your consent
+or notice.
+
+11.5 NO AGENCY
+----------------
+Nothing in these Terms creates an agency, partnership, joint venture,
+employment, or fiduciary relationship between you and the administration
+team.
+
+11.6 NO THIRD-PARTY BENEFICIARIES
+------------------------------------
+These Terms are for the sole benefit of you and the administration team.
+No third party (including other Community members) has any rights under
+these Terms.
+
+11.7 FORCE MAJEURE
+---------------------
+We shall not be liable for any failure or delay in performing our
+obligations under these Terms due to circumstances beyond our reasonable
+control, including but not limited to: natural disasters, wars, terrorism,
+riots, embargoes, acts of civil or military authorities, fire, floods,
+accidents, strikes, shortages of transportation, facilities, fuel, energy,
+labor, or materials, pandemics, telecommunication failures, internet
+outages, or failures of third-party service providers (Discord, database
+hosts, AI providers, etc.).
+
+11.8 ELECTRONIC COMMUNICATIONS
+--------------------------------
+By using the Community, you consent to receive communications from us
+electronically. We may communicate with you via Discord direct messages,
+channel messages, or any other electronic means we deem appropriate. You
+agree that electronic communications satisfy any legal requirement that
+such communications be in writing.
+
+11.9 INDEPENDENT RIGHTS
+-------------------------
+The rights and remedies provided in these Terms are in addition to, not
+in lieu of, any other rights or remedies available to us under applicable
+law.
+
+
+================================================================================
+12. ACKNOWLEDGMENT
+================================================================================
+
+BY JOINING THE COMMUNITY, SENDING ANY MESSAGE, OR USING ANY SERVICE, YOU
+EXPLICITLY ACKNOWLEDGE THAT:
+
+  1. You have read and understood these Terms of Service
+  2. You have read and understood the Privacy Policy
+  3. You understand that your messages are being silently recorded
+  4. You understand that your messages are being analyzed by AI systems
+  5. You understand that your data is stored indefinitely and cannot be deleted
+  6. You waive your right to a jury trial and class action participation
+  7. You agree to binding arbitration for dispute resolution
+  8. Our total financial liability to you is zero ($0.00)
+  9. You assume all risks associated with participating in a monitored
+     community
+  10. You grant us a perpetual license to store and analyze your messages
+  11. These Terms may change at any time without notice
+  12. You may be removed from the Community at any time for any reason
+
+
+================================================================================
+END OF TERMS OF SERVICE
+================================================================================
