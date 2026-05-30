@@ -28,9 +28,22 @@ function resolveBounds(
     if (!isValidIso(from)) return 'Invalid "from" date: not a valid ISO timestamp';
     if (!isValidIso(to)) return 'Invalid "to" date: not a valid ISO timestamp';
     if (new Date(from) > new Date(to)) return '"from" must be before or equal to "to"';
+
+    const startDate = new Date(from);
+    let endDate = new Date(to);
+
+    // Bare date strings (YYYY-MM-DD, no time component) → expand 'to' to
+    // end of day so from=day&to=day returns the full 24 hours instead of
+    // a zero-width range at midnight. If either has a 'T' (time component),
+    // use exact values — this preserves single-hour queries like
+    // from=...T14:00:00Z&to=...T15:00:00Z.
+    if (!to.includes('T')) {
+      endDate = new Date(endDate.getTime() + DAY_MS - 1); // 23:59:59.999
+    }
+
     return {
-      utcStart: new Date(from).toISOString(),
-      utcEnd: new Date(to).toISOString(),
+      utcStart: startDate.toISOString(),
+      utcEnd: endDate.toISOString(),
     };
   }
 
@@ -61,12 +74,19 @@ interface HourRow {
 }
 
 function sanitise(rows: unknown[]): HourRow[] {
-  return rows.map((raw: Record<string, unknown>) => ({
-    hour: new Date(raw.hour as string).toISOString(),
-    message_count: Number(raw.message_count) || 0,
-    unique_users: Number(raw.unique_users) || 0,
-    cluster_count: Number(raw.cluster_count) || 0,
-  }));
+  return rows.map((raw: Record<string, unknown>) => {
+    const h = raw.hour;
+    const hourIso =
+      typeof h === 'number'
+        ? new Date(h).toISOString()     // defensive: epoch ms (shouldn't happen)
+        : new Date(String(h)).toISOString(); // normal: ISO string from TIMESTAMPTZ
+    return {
+      hour: hourIso,
+      message_count: Number(raw.message_count) || 0,
+      unique_users: Number(raw.unique_users) || 0,
+      cluster_count: Number(raw.cluster_count) || 0,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
