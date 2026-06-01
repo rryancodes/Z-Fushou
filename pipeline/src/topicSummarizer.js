@@ -244,10 +244,20 @@ Respond with the JSON object now. Nothing else.`;
 
     // Retry once with stricter prompt if extraction failed
     if (!jsonStr) {
-      logger.warn('topicSummarizer', `First attempt failed for "${topicLabel}", retrying with strict prompt`);
+      logger.warn('topicSummarizer', `First attempt failed for "${topicLabel}", retrying with strict prompt`, {
+        rawResponse: typeof content === 'string' ? content.slice(0, 2000) : String(content).slice(0, 2000),
+        responseLength: typeof content === 'string' ? content.length : 0,
+      });
       const retryResult = await callLLMForSummary(systemPrompt, strictRetryPrompt);
       jsonStr = extractJSON(retryResult.content);
       retried = true;
+
+      if (!jsonStr) {
+        logger.error('topicSummarizer', `Retry also failed for "${topicLabel}" — raw LLM response`, {
+          rawResponse: typeof retryResult.content === 'string' ? retryResult.content.slice(0, 2000) : String(retryResult.content).slice(0, 2000),
+          responseLength: typeof retryResult.content === 'string' ? retryResult.content.length : 0,
+        });
+      }
     }
 
     if (!jsonStr) {

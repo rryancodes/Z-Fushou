@@ -22,7 +22,7 @@ const mentionBriefing = require('./lib/mentionBriefing');
 // Runs daily at 4:55 AM Beijing Time (Asia/Shanghai) via node-cron
 // Set PIPELINE_ENABLED=true to activate
 const PIPELINE_ENABLED = process.env.PIPELINE_ENABLED === 'true';
-const PIPELINE_CRON = process.env.PIPELINE_CRON || '57 23 * * *';      // default: 11:57 PM
+const PIPELINE_CRON = process.env.PIPELINE_CRON || '40 2 * * *';       // default: 2:40 AM
 const PIPELINE_TZ = process.env.PIPELINE_TZ || 'Asia/Shanghai';       // default: Beijing time
 let pipelineJob = null;
 
