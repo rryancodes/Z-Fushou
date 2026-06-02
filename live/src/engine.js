@@ -135,6 +135,10 @@ class LiveEngine {
       last_message_id: message.message_id,
       last_seen_at: message.timestamp || new Date().toISOString(),
       message_count: (caseRow.message_count || 0) + 1,
+      update_count: (caseRow.update_count || 0) + 1,
+      last_similarity: boundaryResult.similarity,
+      confidence: boundaryResult.similarity,
+      state: boundaryResult.similarity >= 0.75 ? 'active' : 'cooling',
     };
 
     let updatedCase = await this.storage.updateCase(caseRow.id, basePatch);
@@ -148,9 +152,27 @@ class LiveEngine {
         messages,
       });
 
-      updatedCase = await this.storage.updateCase(caseRow.id, analysisPatch(updatedCase, analysis));
-      await this.storage.createEvent(caseRow.id, 'timeline_update', analysis.event_summary || analysis.summary, message.message_id);
-      this.stateStore.resetAnalysisCounter(caseRow.id);
+      if (analysis.current_status === 'resolved') {
+        await this.storage.updateCase(caseRow.id, {
+          ...analysisPatch(updatedCase, analysis),
+          status: 'closed',
+          current_status: 'resolved',
+        });
+        await this.storage.createEvent(caseRow.id, 'resolution_detected', analysis.event_summary || analysis.summary, message.message_id);
+        await this.storage.createEvent(caseRow.id, 'case_closed', analysis.summary, message.message_id);
+        await this.qdrant.markCaseClosed(caseRow.id);
+        this.stateStore.forget(caseRow.id);
+        metrics.increment('caseClosureCount');
+
+        logger.info('Resolution detection', 'Closed case after LLM detected resolution', {
+          caseId: caseRow.id,
+          messageId: message.message_id,
+        });
+      } else {
+        updatedCase = await this.storage.updateCase(caseRow.id, analysisPatch(updatedCase, analysis));
+        await this.storage.createEvent(caseRow.id, 'timeline_update', analysis.event_summary || analysis.summary, message.message_id);
+        this.stateStore.resetAnalysisCounter(caseRow.id);
+      }
     }
 
     logger.info('Message processed', 'Updated live case', {
@@ -254,62 +276,29 @@ class LiveEngine {
     return processed;
   }
 
-  async closeQuietCases() {
-    const cutoff = new Date(Date.now() - LIVE_CONFIG.QUIET_TIME_MINUTES * 60 * 1000).toISOString();
-    const cases = await this.storage.fetchQuietOpenCases(cutoff);
-    let closed = 0;
-
-    for (const caseRow of cases) {
-      try {
-        const messages = await this.storage.fetchCaseMessages(caseRow.id, LIVE_CONFIG.REBUILD_MESSAGE_LIMIT);
-        const analysis = await this.analyzeCase({
-          trigger: 'quiet_time_closure',
-          caseRow,
-          messages,
-        });
-
-    await this.storage.updateCase(caseRow.id, {
-          ...analysisPatch(caseRow, analysis),
-          status: 'closed',
-          current_status: analysis.current_status === 'resolved' ? 'resolved' : 'dormant',
-        });
-        await this.storage.createEvent(caseRow.id, 'case_closed', analysis.event_summary || 'Quiet-time closure');
-        await this.qdrant.markCaseClosed(caseRow.id);
-        this.stateStore.forget(caseRow.id);
-        metrics.increment('caseClosureCount');
-        closed += 1;
-      } catch (error) {
-        logger.error('Case closure', 'Quiet-time closure failed', {
-          caseId: caseRow.id,
-          error: error.message,
-          stack: error.stack?.slice(0, 1000),
-        });
-      }
-    }
-
-    if (closed > 0) {
-      logger.info('Case closure', 'Closed quiet live cases', { closed });
-    }
-
-    return closed;
-  }
-
   async tick() {
     const processed = await this.processBatch();
-    const closed = await this.closeQuietCases();
-    await this.logOperationalMetrics(processed, closed);
-    return { processed, closed };
+    await this.logOperationalMetrics(processed);
+    return { processed };
   }
 
-  async logOperationalMetrics(processed, closed) {
+  async logOperationalMetrics(processed) {
     try {
       const dbMetrics = await this.storage.fetchOperationalMetrics();
-      metrics.set('activeCases', dbMetrics.openCases || 0);
+      const activeCases = dbMetrics.openCases || 0;
+      metrics.set('activeCases', activeCases);
+
+      if (activeCases > 100) {
+        logger.error('Metrics', 'Abnormal active case count — possible runaway case creation', {
+          activeCases,
+          threshold: 100,
+        });
+      }
+
       logger.info('Metrics', 'Live engine metrics', {
         ...dbMetrics,
         ...metrics.snapshot(),
         processedThisTick: processed,
-        quietClosuresThisTick: closed,
       });
     } catch (error) {
       logger.error('Metrics', 'Failed to fetch live engine metrics', {

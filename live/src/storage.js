@@ -235,21 +235,6 @@ async function fetchCaseMessages(caseId, limit = LIVE_CONFIG.REBUILD_MESSAGE_LIM
   }, { caseId });
 }
 
-async function fetchQuietOpenCases(cutoffIso, limit = 50) {
-  return dbRetry('Supabase fetch quiet cases', async () => {
-    const { data, error } = await getSupabase()
-      .from('live_cases')
-      .select('*')
-      .eq('status', 'open')
-      .lt('last_seen_at', cutoffIso)
-      .order('last_seen_at', { ascending: true })
-      .limit(limit);
-
-    if (error) throw error;
-    return data || [];
-  });
-}
-
 async function fetchOperationalMetrics() {
   return dbRetry('Supabase fetch live metrics', async () => {
     const db = getSupabase();
@@ -300,6 +285,5 @@ module.exports = {
   createEvent,
   markMessageProcessed,
   fetchCaseMessages,
-  fetchQuietOpenCases,
   fetchOperationalMetrics,
 };

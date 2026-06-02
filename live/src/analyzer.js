@@ -34,14 +34,35 @@ function normalizeTimeline(value) {
     .slice(-MAX_TIMELINE_ENTRIES);
 }
 
+const STATUS_KEYWORDS = ['resolved', 'investigating', 'dormant', 'active'];
+
+function normalizeStatus(raw) {
+  const value = String(raw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!value) {
+    throw new Error(`Invalid current_status: empty or missing`);
+  }
+
+  for (const keyword of STATUS_KEYWORDS) {
+    if (value.includes(keyword)) return keyword;
+  }
+
+  throw new Error(`Invalid current_status: "${raw}" — no known status keyword found`);
+}
+
 function normalizeAnalysis(parsed) {
-  const currentStatus = String(parsed.current_status || parsed.status || 'active').toLowerCase();
   const routingType = String(parsed.routing_type || 'unknown').toLowerCase();
   const attentionScore = String(parsed.attention_score || 'low').toLowerCase();
 
+  const currentStatus = normalizeStatus(parsed.current_status || parsed.status);
+
   return {
     summary: String(parsed.summary || '').trim().slice(0, MAX_SUMMARY_LENGTH),
-    current_status: VALID_STATUS.has(currentStatus) ? currentStatus : 'active',
+    current_status: currentStatus,
     routing_type: VALID_ROUTING.has(routingType) ? routingType : 'unknown',
     attention_score: VALID_ATTENTION.has(attentionScore) ? attentionScore : 'low',
     timeline: normalizeTimeline(parsed.timeline),
@@ -99,17 +120,40 @@ Return ONLY this JSON object:
     stage: 'Timeline generation',
     caseId: caseRow?.id,
   });
+
+  logger.info('Timeline generation', 'LLM response received', {
+    caseId: caseRow?.id,
+    trigger,
+    responseType: typeof content,
+    responseLength: typeof content === 'string' ? content.length : 0,
+  });
+
   const jsonStr = extractJSONObject(content);
   if (!jsonStr) {
     logger.error('Timeline generation', 'LLM response did not contain JSON', {
       caseId: caseRow?.id,
-      rawResponse: content.slice(0, 1000),
+      trigger,
+      responseType: typeof content,
+      responseLength: typeof content === 'string' ? content.length : 0,
+      rawResponse: typeof content === 'string' ? content.slice(0, 1000) : String(content).slice(0, 1000),
     });
     throw new Error('No JSON object found in live analysis response');
   }
 
   const parsed = JSON.parse(jsonStr);
   const analysis = normalizeAnalysis(parsed);
+
+  logger.info('Timeline generation', 'LLM output validated', {
+    caseId: caseRow?.id,
+    trigger,
+    hasSummary: !!analysis.summary,
+    hasStatus: !!analysis.current_status,
+    hasRouting: !!analysis.routing_type,
+    hasAttention: !!analysis.attention_score,
+    timelineCount: analysis.timeline.length,
+    questionsCount: analysis.unresolved_questions.length,
+  });
+
   if (!analysis.summary) {
     throw new Error('Live analysis returned empty summary');
   }
