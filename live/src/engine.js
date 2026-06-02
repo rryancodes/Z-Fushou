@@ -104,6 +104,7 @@ class LiveEngine {
     await this.storage.updateCase(caseRow.id, {
       ...analysisPatch(caseRow, analysis),
       status: 'closed',
+      state: 'closed',
       current_status: analysis.current_status === 'resolved' ? 'resolved' : 'dormant',
     });
     await this.storage.createEvent(caseRow.id, 'boundary_detected', analysis.event_summary || 'Semantic boundary detected', message.message_id);
@@ -156,6 +157,7 @@ class LiveEngine {
         await this.storage.updateCase(caseRow.id, {
           ...analysisPatch(updatedCase, analysis),
           status: 'closed',
+          state: 'closed',
           current_status: 'resolved',
         });
         await this.storage.createEvent(caseRow.id, 'resolution_detected', analysis.event_summary || analysis.summary, message.message_id);

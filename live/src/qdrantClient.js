@@ -137,8 +137,14 @@ async function searchActiveDiscussion(embedding, message) {
 
     const json = await res.json();
     const hits = json?.result || [];
-    const best = hits.find((hit) => hit?.payload?.case_id);
+    const best = hits.find((hit) => hit?.payload?.case_id && hit.score >= LIVE_CONFIG.MATCH_MIN_SCORE);
     if (!best) return null;
+
+    logger.info('Qdrant', 'Matched active discussion', {
+      caseId: best.payload.case_id,
+      score: Number(best.score.toFixed(4)),
+      messageId: message.message_id,
+    });
 
     return {
       caseId: best.payload.case_id,
