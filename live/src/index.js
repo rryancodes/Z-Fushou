@@ -43,7 +43,7 @@ async function runLiveEngine() {
     throw new Error(`Live engine lock held after ${LOCK_RETRY_ATTEMPTS} attempts — another instance may be stuck. Exiting.`);
   }
 
-  const engine = new LiveEngine();
+  const engine = new LiveEngine({ refreshLock: () => lock.refreshLock() });
   await engine.initialize();
 
   logger.info('Startup', 'Live engine started', {
@@ -89,7 +89,7 @@ async function runLiveEngineOnce() {
   }
 
   try {
-    const engine = new LiveEngine();
+    const engine = new LiveEngine({ refreshLock: () => lock.refreshLock() });
     await engine.initialize();
     logger.info('Startup', 'Live engine one-shot tick started');
     const result = await engine.tick();

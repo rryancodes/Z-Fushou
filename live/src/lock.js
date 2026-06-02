@@ -2,7 +2,7 @@ const { randomUUID } = require('crypto');
 const logger = require('./logger');
 
 const LOCK_KEY = 'live_engine:lock';
-const LOCK_TIMEOUT_MS = 60 * 1000; // 60 seconds
+const LOCK_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 let redisClient = null;
 let ownerToken = null;

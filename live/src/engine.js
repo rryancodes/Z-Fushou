@@ -33,6 +33,7 @@ class LiveEngine {
     this.qdrant = options.qdrant || qdrantClient;
     this.embedText = options.embedText || embedText;
     this.analyzeCase = options.analyzeCase || analyzeCase;
+    this.refreshLock = options.refreshLock || (() => Promise.resolve(true));
   }
 
   async initialize() {
@@ -273,6 +274,15 @@ class LiveEngine {
         await this.processMessage(message);
         processed += 1;
         metrics.increment('messagesProcessed');
+
+        // Refresh lock every 5 messages to prevent expiry during long batches
+        if (processed % 5 === 0) {
+          const alive = await this.refreshLock();
+          if (!alive) {
+            logger.error('Polling', 'Lock lost during batch — stopping');
+            return processed;
+          }
+        }
       } catch (error) {
         const preview = String(message.content || '').slice(0, 80);
         logger.error('Message processing', `Failed to process live message: ${error.message}`, {
