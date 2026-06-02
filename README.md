@@ -50,6 +50,7 @@ Discord
 │  /kpi  /clusters  /activity          │
 │  /mentions  /messages                │
 │  /cluster-detail  /date-availability │
+│  /live-timeline                      │
 │  Authenticated via desktop JWT       │
 └──────────────┬───────────────────────┘
                 │
@@ -99,7 +100,7 @@ Runs `index.js` — the bot stays connected to Discord 24/7. Handles:
 Deploys automatically on push to main.
 
 ### Supabase (Edge Functions)
-Seven API endpoints deployed directly to Supabase via CLI. The desktop app calls these. Each endpoint:
+Eight API endpoints deployed directly to Supabase via CLI. The desktop app calls these. Each endpoint:
 - Verifies the user's auth token
 - Queries the database
 - Returns structured JSON
@@ -175,7 +176,8 @@ supabase/
     ├── mentions/index.ts             # Flagged mention messages
     ├── messages/index.ts             # Cleaned message browser
     ├── activity/index.ts             # Hourly activity chart (DB aggregation)
-    └── date-availability/index.ts    # Which dates have data
+    ├── date-availability/index.ts    # Which dates have data
+    └── live-timeline/index.ts        # Live discussion cases (real-time, sorted by latest)
 ```
 
 ## Database Tables
