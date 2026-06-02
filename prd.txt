@@ -1,0 +1,847 @@
+Now 1 thing,
+I already ran these sql command on supabase cli and the tables rows and columns are present to dont do this again as we alredy did it.
+
+1. live_cases.sql
+create table if not exists public.live_cases (
+    id uuid primary key default gen_random_uuid(),
+
+    guild_id text not null,
+    channel_id text not null,
+    thread_id text,
+
+    status text not null default 'open',
+
+    summary text,
+
+    current_status text default 'active',
+
+    routing_type text default 'unknown',
+
+    attention_score text default 'low',
+
+    timeline jsonb default '[]'::jsonb,
+
+    unresolved_questions jsonb default '[]'::jsonb,
+
+    first_message_id text,
+    last_message_id text,
+
+    first_seen_at timestamptz,
+    last_seen_at timestamptz,
+
+    message_count integer not null default 0,
+
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+2. live_case_messages.sql
+create table if not exists public.live_case_messages (
+    id uuid primary key default gen_random_uuid(),
+
+    case_id uuid not null,
+
+    message_id text not null,
+
+    created_at timestamptz not null default now()
+);
+3. live_case_events.sql
+create table if not exists public.live_case_events (
+    id uuid primary key default gen_random_uuid(),
+
+    case_id uuid not null,
+
+    event_type text not null,
+
+    event_summary text,
+
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_live_cases_status
+on public.live_cases(status);
+
+create index if not exists idx_live_cases_guild_channel_thread
+on public.live_cases(
+    guild_id,
+    channel_id,
+    thread_id
+);
+
+create index if not exists idx_live_cases_last_seen
+on public.live_cases(last_seen_at);
+
+create index if not exists idx_live_case_messages_case_id
+on public.live_case_messages(case_id);
+
+create index if not exists idx_live_case_messages_message_id
+on public.live_case_messages(message_id);
+
+create index if not exists idx_live_case_events_case_id
+on public.live_case_events(case_id);
+
+create index if not exists idx_live_case_events_event_type
+on public.live_case_events(event_type);
+
+
+i also 
+
+```sql
+ALTER TABLE public.community_messages_clean
+ADD COLUMN IF NOT EXISTS live_processed_at timestamptz NULL;
+
+CREATE INDEX IF NOT EXISTS idx_community_messages_clean_live_processed
+ON public.community_messages_clean (live_processed_at, created_at);
+```
+
+To stop old rows from being picked on first run, do a one-time backfill before enabling the live worker:
+
+```sql
+UPDATE public.community_messages_clean
+SET live_processed_at = NOW()
+WHERE live_processed_at IS NULL;
+```
+
+Then the live worker only processes:
+
+```sql
+WHERE live_processed_at IS NULL
+```
+
+New rows will stay `NULL`, old rows will be marked once.
+
+
+
+# ZFushou Live Incident & Topic Tracking Engine (Real-Time Semantic Layer)
+
+## Purpose
+
+Build a new real-time semantic tracking system that operates independently from the existing daily semantic pipeline.
+
+The existing pipeline remains unchanged and continues producing daily topic summaries, clusters, analytics, and embeddings.
+
+This new system is designed to detect, track, evolve, and summarize active discussions, incidents, complaints, emerging issues, and important conversations as they happen.
+
+The goal is not to summarize an entire day.
+
+The goal is to answer:
+
+* What is happening right now?
+* What issue is actively being discussed?
+* Has the discussion evolved?
+* Was the issue resolved?
+* Does this require product attention?
+* What is the current state of the discussion?
+
+---
+
+# Core Design Principles
+
+## MUST NOT use fixed message counts
+
+Forbidden:
+
+* Analyze every 5 messages
+* Analyze every 10 messages
+* Analyze every 20 messages
+
+Reason:
+
+Conversation sizes vary dramatically.
+
+A fixed count causes:
+
+* Context loss
+* Topic fragmentation
+* Artificial boundaries
+
+The system must use semantic drift instead of message count.
+
+---
+
+## MUST start from zero state
+
+At system startup:
+
+```text
+No topics
+No incidents
+No active discussions
+```
+
+The first incoming message must be enough to create the first live discussion state.
+
+No historical context is required.
+
+---
+
+## MUST be stateful
+
+Unlike the daily pipeline:
+
+```text
+Input
+↓
+Process
+↓
+Output
+```
+
+The live system maintains active memory.
+
+```text
+Message
+↓
+Update state
+↓
+Evaluate discussion
+↓
+Store state
+↓
+Wait for next message
+```
+
+---
+
+# High Level Architecture
+
+```text
+Discord
+↓
+community_messages_clean
+↓
+Live Tracking Engine
+├── Embedding Layer
+├── Routing Layer
+├── Rolling TextTiling Layer
+├── Boundary Detector
+├── Timeline Engine
+├── Summary Generator
+└── Storage Layer
+```
+
+---
+
+# Message Processing Flow
+
+## Step 1
+
+New clean message arrives
+
+Source:
+
+community_messages_clean
+
+Trigger:
+
+INSERT event
+
+---
+
+## Step 2
+
+Generate embedding
+
+Use:
+
+Existing Cloudflare embedding model
+
+Same credentials
+
+Same infrastructure
+
+No new model.
+
+Output:
+
+```ts
+{
+ embedding: [...]
+}
+```
+
+Stored temporarily in memory.
+
+---
+
+## Step 3
+
+Load active discussion
+
+Query:
+
+```sql
+live_cases
+WHERE status='open'
+```
+
+Filter by:
+
+```text
+guild_id
+channel_id
+thread_id
+```
+
+If none exists:
+
+Create new case.
+
+---
+
+# Discussion Routing Layer
+
+Purpose:
+
+Determine ownership.
+
+Not intent.
+
+Not sentiment.
+
+Not classification.
+
+Only:
+
+```text
+Product-side issue
+User-side issue
+Mixed
+Unknown
+```
+
+Examples:
+
+"API returns 500"
+
+→ Product-side
+
+"My laptop is broken"
+
+→ User-side
+
+"Not sure why login fails"
+
+→ Unknown
+
+This helps prioritization later.
+
+---
+
+# Rolling TextTiling Layer
+
+This is the heart of the system.
+
+The daily pipeline uses full-day segmentation.
+
+The live engine uses rolling segmentation.
+
+---
+
+## Current State
+
+Every active discussion maintains:
+
+```ts
+{
+ activeCentroid,
+ recentEmbeddings,
+ cohesionScore,
+ lastBoundaryScore,
+ firstMessageAt,
+ lastMessageAt
+}
+```
+
+---
+
+## New Message
+
+Calculate:
+
+```ts
+similarity =
+ cosineSimilarity(
+   messageEmbedding,
+   activeCentroid
+ )
+```
+
+---
+
+Update:
+
+```ts
+activeCentroid
+```
+
+using rolling average.
+
+---
+
+## Cohesion Calculation
+
+Measure:
+
+```text
+Current message
+vs
+Current discussion
+```
+
+Not:
+
+```text
+Current message
+vs
+Previous message
+```
+
+This avoids noisy boundaries.
+
+---
+
+# Boundary Detection
+
+Purpose:
+
+Detect topic shifts.
+
+Not message count.
+
+Not time count.
+
+Semantic shifts.
+
+---
+
+Example
+
+Discussion:
+
+```text
+API error
+API error
+API error
+Rate limits
+API error
+```
+
+No boundary.
+
+---
+
+Discussion:
+
+```text
+API error
+API error
+API error
+```
+
+Then:
+
+```text
+Can GLM 5 beat Claude?
+```
+
+Boundary.
+
+New discussion.
+
+---
+
+Boundary candidate generated when:
+
+```text
+Cohesion score drops
+AND
+Similarity drops
+```
+
+Both required.
+
+Never one alone.
+
+---
+
+# Quiet-Time Flush
+
+Some discussions end naturally.
+
+No boundary appears.
+
+No explicit resolution appears.
+
+---
+
+Example:
+
+```text
+Login broken
+Any fix?
+Still broken
+```
+
+Then silence.
+
+---
+
+After:
+
+```text
+10 minutes
+```
+
+Configurable.
+
+Discussion auto-closes.
+
+LLM generates final state.
+
+---
+
+# Timeline Engine
+
+Every active case maintains a timeline.
+
+Example:
+
+```text
+09:01
+User reports login issue
+
+09:03
+Additional users confirm issue
+
+09:08
+Moderator requests logs
+
+09:12
+Workaround discovered
+```
+
+Timeline updates only when:
+
+* Significant new information appears
+* Resolution appears
+* Scope changes
+
+Not every message.
+
+---
+
+# LLM Usage Rules
+
+LLM must NEVER run on every message.
+
+Too expensive.
+
+Too slow.
+
+---
+
+Allowed triggers:
+
+1. New case creation
+2. Boundary closure
+3. Quiet-time closure
+4. Significant timeline update
+
+Only.
+
+---
+
+# Generated Outputs
+
+Every case stores:
+
+## Summary
+
+Example
+
+```text
+Users report intermittent API failures
+when using GLM-5 through the web client.
+Multiple confirmations received.
+```
+
+---
+
+## Current Status
+
+Values:
+
+```text
+Active
+Investigating
+Resolved
+Dormant
+```
+
+---
+
+## Unresolved Questions
+
+Example
+
+```json
+[
+ "Why is API latency increasing?",
+ "Is this model rollout related?"
+]
+```
+
+---
+
+## Product Attention Score
+
+Generated using:
+
+* Routing layer
+* Discussion growth
+* Number of unique participants
+* Severity indicators
+
+Output:
+
+```text
+Low
+Medium
+High
+Critical
+```
+
+---
+
+# Storage Layer
+
+Table:
+
+live_cases
+
+Stores:
+
+```sql
+id
+guild_id
+channel_id
+thread_id
+
+status
+
+summary
+
+current_status
+
+routing_type
+
+attention_score
+
+timeline
+
+unresolved_questions
+
+first_message_id
+last_message_id
+
+first_seen_at
+last_seen_at
+
+message_count
+
+created_at
+updated_at
+```
+
+---
+
+Table:
+
+live_case_messages
+
+Stores:
+
+```sql
+id
+case_id
+message_id
+created_at
+```
+
+---
+
+Table:
+
+live_case_events
+
+Stores:
+
+```sql
+id
+case_id
+
+event_type
+
+event_summary
+
+created_at
+```
+
+Event examples:
+
+```text
+boundary_detected
+resolution_detected
+timeline_update
+case_closed
+```
+
+---
+
+# Logging Requirements
+
+NO silent failures.
+
+Forbidden:
+
+```ts
+catch(error){
+ return defaultData
+}
+```
+
+Forbidden.
+
+---
+
+Every failure must log:
+
+```ts
+{
+ stage,
+ caseId,
+ messageId,
+ error
+}
+```
+
+---
+
+Examples
+
+```text
+[LiveEngine]
+Embedding failed
+```
+
+```text
+[LiveEngine]
+Boundary detection failed
+```
+
+```text
+[LiveEngine]
+Timeline generation failed
+```
+
+```text
+[LiveEngine]
+Case closure failed
+```
+
+---
+
+# Retry Policy
+
+Embedding
+
+```text
+3 retries
+```
+
+LLM
+
+```text
+3 retries
+```
+
+Supabase
+
+```text
+3 retries
+```
+
+---
+
+# Monitoring Metrics
+
+Track:
+
+```text
+Open cases
+Closed cases
+Average case duration
+Boundary count
+Embedding failures
+LLM failures
+Retry count
+Case creation rate
+Case closure rate
+```
+
+---
+
+# Railway Deployment
+
+Runs inside existing Railway worker.
+
+Separate service.
+
+Independent from daily pipeline.
+
+---
+
+Services
+
+```text
+Daily Pipeline
+    ↓
+Daily analytics
+
+Live Engine
+    ↓
+Active incident tracking
+```
+
+No shared execution path.
+
+No dependency.
+
+Either system can fail independently.
+
+---
+
+# Future UI
+
+Live Topics
+
+```text
+API Failures
+ACTIVE
+
+Users report elevated API error rates.
+14 participants.
+Started 9 minutes ago.
+```
+
+Click:
+
+```text
+Summary
+Timeline
+Unresolved Questions
+```
+
+Timeline updates continuously until case closes.
+
+This becomes the real-time operational layer while the existing daily pipeline remains the historical analytics layer.

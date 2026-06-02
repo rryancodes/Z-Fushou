@@ -1,16 +1,37 @@
-create table public.bot_config (
-  key text not null,
-  value text null,
-  note text null,
-  constraint bot_config_pkey primary key (key)
+create table public.community_messages (
+  message_id text not null,
+  channel_id text not null,
+  guild_id text not null,
+  user_id text not null,
+  username text null,
+  content text null,
+  timestamp timestamp with time zone not null,
+  thread_id text null,
+  attachments jsonb null default '[]'::jsonb,
+  created_at timestamp with time zone not null default now(),
+  is_cleaned boolean null default false,
+  cleaned_message_id bigint null,
+  is_monitored_mention boolean null default false,
+  mentioned_user_ids jsonb null default '[]'::jsonb,
+  mention_summary text null,
+  mention_summary_generated_at timestamp with time zone null,
+  constraint community_messages_pkey primary key (message_id),
+  constraint fk_cleaned_message foreign KEY (cleaned_message_id) references community_messages_clean (id) on delete set null
 ) TABLESPACE pg_default;
 
-create table public.bot_config (
-  key text not null,
-  value text null,
-  note text null,
-  constraint bot_config_pkey primary key (key)
+create index IF not exists idx_community_messages_channel_id on public.community_messages using btree (channel_id) TABLESPACE pg_default;
+
+create index IF not exists idx_community_messages_timestamp on public.community_messages using btree ("timestamp") TABLESPACE pg_default;
+
+create index IF not exists idx_community_messages_cleaning on public.community_messages using btree (is_cleaned, created_at) TABLESPACE pg_default;
+
+create index IF not exists idx_community_messages_mention_summary_pending on public.community_messages using btree (
+  is_monitored_mention,
+  mention_summary_generated_at,
+  created_at
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_community_messages_created_at on public.community_messages using btree (created_at desc) TABLESPACE pg_default;
 
 create table public.community_messages_clean (
   id bigserial not null,
@@ -21,6 +42,8 @@ create table public.community_messages_clean (
   content text null,
   timestamp timestamp with time zone null,
   created_at timestamp with time zone null default now(),
+  semantic_processed_at timestamp with time zone null,
+  live_processed_at timestamp with time zone null,
   constraint community_messages_clean_pkey primary key (id),
   constraint community_messages_clean_message_id_key unique (message_id)
 ) TABLESPACE pg_default;
@@ -29,104 +52,6 @@ create index IF not exists idx_community_messages_clean_message_id on public.com
 
 create index IF not exists idx_community_messages_clean_channel_timestamp on public.community_messages_clean using btree (channel_id, "timestamp") TABLESPACE pg_default;
 
-create table public.departments (
-  id uuid not null default gen_random_uuid (),
-  name text not null,
-  keywords text[] null default '{}'::text[],
-  internal_channel_id text null,
-  role_id text null,
-  created_at timestamp with time zone null default now(),
-  constraint departments_pkey primary key (id),
-  constraint departments_name_key unique (name)
-) TABLESPACE pg_default;
+create index IF not exists idx_community_messages_clean_semantic on public.community_messages_clean using btree (semantic_processed_at, created_at) TABLESPACE pg_default;
 
-create table public.message_ingestion_state (
-  channel_id text not null,
-  last_message_id text null,
-  last_processed_at timestamp with time zone null default now(),
-  constraint message_ingestion_state_pkey primary key (channel_id)
-) TABLESPACE pg_default;
-
-create table public.pipeline_cluster_messages (
-  id bigserial not null,
-  batch_id text not null,
-  cluster_id integer not null,
-  message_id text not null,
-  context_block_id text not null,
-  channel_id text null,
-  user_id text null,
-  created_at timestamp with time zone null default now(),
-  processing_date date not null,
-  constraint pipeline_cluster_messages_pkey primary key (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_cluster_messages_batch_id on public.pipeline_cluster_messages using btree (batch_id) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_cluster_messages_message_id on public.pipeline_cluster_messages using btree (message_id) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_cluster_messages_processing_date on public.pipeline_cluster_messages using btree (processing_date) TABLESPACE pg_default;
-
-create table public.pipeline_clusters (
-  id bigserial not null,
-  batch_id text not null,
-  cluster_id integer not null,
-  start_timestamp timestamp with time zone null,
-  end_timestamp timestamp with time zone null,
-  message_count integer not null default 0,
-  unique_users integer not null default 0,
-  avg_boundary_score double precision null,
-  created_at timestamp with time zone null default now(),
-  topic_label text null,
-  processing_date date not null,
-  constraint pipeline_clusters_pkey primary key (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_clusters_batch_id on public.pipeline_clusters using btree (batch_id) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_clusters_processing_date on public.pipeline_clusters using btree (processing_date) TABLESPACE pg_default;
-
-create table public.pipeline_topic_summaries (
-  id bigserial not null,
-  batch_id text not null,
-  cluster_id integer not null,
-  topic_label text not null,
-  summary text not null,
-  key_issues jsonb null default '[]'::jsonb,
-  unanswered_questions jsonb null default '[]'::jsonb,
-  sentiment text null,
-  severity text null,
-  message_count integer not null default 0,
-  unique_users integer not null default 0,
-  messages_per_hour double precision null,
-  start_timestamp timestamp with time zone not null,
-  end_timestamp timestamp with time zone not null,
-  llm_model text null default '@cf/meta/llama-3.3-70b-instruct-fp8-fast'::text,
-  llm_tokens_used integer null,
-  created_at timestamp with time zone null default now(),
-  processing_date date not null,
-  constraint pipeline_topic_summaries_pkey primary key (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_batch_id on public.pipeline_topic_summaries using btree (batch_id) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_topic_label on public.pipeline_topic_summaries using btree (topic_label) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_created_at on public.pipeline_topic_summaries using btree (created_at desc) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_sentiment on public.pipeline_topic_summaries using btree (sentiment) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_severity on public.pipeline_topic_summaries using btree (severity) TABLESPACE pg_default;
-
-create index IF not exists idx_pipeline_topic_summaries_processing_date on public.pipeline_topic_summaries using btree (processing_date) TABLESPACE pg_default;
-
-create table public.status_log (
-  id uuid not null default gen_random_uuid (),
-  issue_id uuid not null,
-  old_status text null,
-  new_status text not null,
-  changed_by text not null,
-  note text null,
-  changed_at timestamp with time zone null default now(),
-  constraint status_log_pkey primary key (id),
-  constraint status_log_issue_id_fkey foreign KEY (issue_id) references issues (id) on delete CASCADE
-) TABLESPACE pg_default;
+create index IF not exists idx_community_messages_clean_live_processed on public.community_messages_clean using btree (live_processed_at, created_at) TABLESPACE pg_default;

@@ -18,6 +18,11 @@ const cleaning = require('./lib/cleaning');
 const MENTION_BRIEFING_ENABLED = process.env.MENTION_BRIEFING_ENABLED === 'true';
 const mentionBriefing = require('./lib/mentionBriefing');
 
+// ── Live engine (real-time discussion tracking) ────────────────────
+// Polls every 15s for unprocessed messages, tracks live discussions.
+// Set LIVE_ENGINE_ENABLED=true to activate
+const LIVE_ENGINE_ENABLED = process.env.LIVE_ENGINE_ENABLED === 'true';
+
 // ── Semantic pipeline scheduler (cron-based) ──────────────────────
 // Runs daily at 4:55 AM Beijing Time (Asia/Shanghai) via node-cron
 // Set PIPELINE_ENABLED=true to activate
@@ -103,6 +108,16 @@ client.once('clientReady', async () => {
     console.log('[mentionBriefing] Disabled (set MENTION_BRIEFING_ENABLED=true to activate)');
   }
 
+  // Start live engine (if enabled)
+  if (LIVE_ENGINE_ENABLED) {
+    const { runLiveEngine } = require('./live/src/index');
+    runLiveEngine().catch((err) => {
+      console.error('[liveEngine] Fatal error:', err.message);
+    });
+  } else {
+    console.log('[liveEngine] Disabled (set LIVE_ENGINE_ENABLED=true to activate)');
+  }
+
   console.log('[bot] Systems running — ingestion + cleaning active');
 });
 
@@ -117,6 +132,10 @@ async function shutdown(signal) {
   stopPipelineScheduler();
   mentionBriefing.stop();
   cleaning.stop();
+  if (LIVE_ENGINE_ENABLED) {
+    const { stopLiveEngine } = require('./live/src/index');
+    stopLiveEngine();
+  }
   await ingestion.shutdown();
   client.destroy();
   process.exit(0);

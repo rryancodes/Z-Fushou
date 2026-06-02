@@ -1,0 +1,31 @@
+const LIVE_CONFIG = {
+  POLL_INTERVAL_MS: parseInt(process.env.LIVE_ENGINE_POLL_INTERVAL_MS || '15000', 10),
+  FETCH_LIMIT: parseInt(process.env.LIVE_ENGINE_FETCH_LIMIT || '25', 10),
+  QUIET_TIME_MINUTES: parseInt(process.env.LIVE_ENGINE_QUIET_TIME_MINUTES || '10', 10),
+  RECENT_EMBEDDINGS_LIMIT: parseInt(process.env.LIVE_ENGINE_RECENT_EMBEDDINGS_LIMIT || '25', 10),
+  REBUILD_MESSAGE_LIMIT: parseInt(process.env.LIVE_ENGINE_REBUILD_MESSAGE_LIMIT || '25', 10),
+  QDRANT_COLLECTION: process.env.LIVE_QDRANT_COLLECTION || 'live_discussion_messages',
+  QDRANT_VECTOR_SIZE: parseInt(process.env.LIVE_QDRANT_VECTOR_SIZE || '1024', 10),
+  QDRANT_SEARCH_LIMIT: parseInt(process.env.LIVE_QDRANT_SEARCH_LIMIT || '8', 10),
+
+  SIMILARITY_BOUNDARY_THRESHOLD: parseFloat(process.env.LIVE_ENGINE_SIMILARITY_THRESHOLD || '0.62'),
+  COHESION_DROP_THRESHOLD: parseFloat(process.env.LIVE_ENGINE_COHESION_DROP_THRESHOLD || '0.16'),
+  TIMELINE_UPDATE_MIN_MESSAGES: parseInt(process.env.LIVE_ENGINE_TIMELINE_UPDATE_MIN_MESSAGES || '3', 10),
+
+  RETRY_COUNT: parseInt(process.env.LIVE_ENGINE_RETRY_COUNT || '3', 10),
+  RETRY_BASE_MS: parseInt(process.env.LIVE_ENGINE_RETRY_BASE_MS || '500', 10),
+
+  CHAT_MODEL: process.env.LIVE_ENGINE_CHAT_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  EMBEDDING_MODEL: process.env.CLOUDFLARE_EMBEDDING_MODEL || '@cf/baai/bge-large-en-v1.5',
+
+  REQUIRED_ENV_VARS: [
+    'CF_ACCOUNT_ID',
+    'CF_API_TOKEN',
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_KEY',
+    'QDRANT_URL',
+    'QDRANT_API_KEY',
+  ],
+};
+
+module.exports = { LIVE_CONFIG };

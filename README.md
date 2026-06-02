@@ -7,8 +7,9 @@ Discord community analytics system. A silent bot collects messages from Discord 
 1. **Collects messages** from configured Discord channels in real time
 2. **Cleans them** — removes noise, normalizes text, resolves user mentions
 3. **Analyzes them nightly** — groups messages into conversation topics, generates summaries using an AI model, rates sentiment (frustrated, confused, neutral, satisfied) and urgency (critical, high, medium, low)
-4. **Serves analytics** through authenticated API endpoints (message counts, topic clusters, activity charts, mention alerts)
-5. **Flags important mentions** — when specific people (team leads, community managers) are mentioned, those messages get tagged for review
+4. **Tracks live discussions** — as conversations happen, it groups related messages into cases, keeps running summaries and timelines, and closes them when the topic shifts or goes quiet
+5. **Serves analytics** through authenticated API endpoints (message counts, topic clusters, activity charts, mention alerts)
+6. **Flags important mentions** — when specific people (team leads, community managers) are mentioned, those messages get tagged for review
 
 The desktop app connects to the API endpoints, authenticates the user, and renders charts and dashboards.
 
@@ -23,24 +24,27 @@ Discord
 │  Real-time message capture via bot   │
 │  Batch writes to Supabase            │
 └──────────────┬───────────────────────┘
-               │
-               ▼
+                │
+                ▼
 ┌──────────────────────────────────────┐
 │  Cleaning (every 30 min)             │
 │  Noise removal, mention resolution,  │
 │  text normalization → clean table    │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│  Nightly Pipeline (7 AM Beijing)     │
-│  Boundary detection → topic grouping │
-│  AI summarization → sentiment rating │
-│  Results stored in Supabase          │
-│  Vectors indexed in Qdrant           │
-└──────────────┬───────────────────────┘
-               │
-               ▼
+└──────┬──────────────────┬────────────┘
+       │                  │
+       ▼                  ▼
+┌──────────────┐  ┌──────────────────────────────────────┐
+│ Nightly      │  │  Live Engine (every 15 seconds)      │
+│ Pipeline     │  │  Picks up new cleaned messages       │
+│ (11:55 PM)   │  │  Embeds them via Cloudflare          │
+│              │  │  Matches to active discussions        │
+│ Full-day     │  │  via Qdrant vector search            │
+│ batch        │  │  Creates/updates/closes cases        │
+│ processing   │  │  Runs AI analysis on triggers        │
+│              │  │  Writes cases + events to Supabase   │
+└──────┬───────┘  └──────────────┬───────────────────────┘
+       │                         │
+       ▼                         ▼
 ┌──────────────────────────────────────┐
 │  Edge Functions (Supabase)           │
 │  /kpi  /clusters  /activity          │
@@ -48,19 +52,47 @@ Discord
 │  /cluster-detail  /date-availability │
 │  Authenticated via desktop JWT       │
 └──────────────┬───────────────────────┘
-               │
-               ▼
-          Desktop App
-     (Electron + Charts)
+                │
+                ▼
+           Desktop App
+      (Electron + Charts)
 ```
 
-## Two Runtime Environments
+## Two Processing Systems
+
+### Nightly Pipeline
+
+Runs once at 11:55 PM Beijing time. Processes the entire day's cleaned messages as a batch:
+1. Segments messages into conversation topics using similarity boundaries
+2. Classifies each segment into a topic category using AI
+3. Generates summaries with sentiment and urgency ratings
+4. Stores results in Supabase and indexes vectors in Qdrant
+
+Good for: daily reports, historical analysis, trend charts.
+
+### Live Engine
+
+Runs continuously every 15 seconds. Processes new messages as they arrive:
+1. Picks up cleaned messages not yet processed by the live engine
+2. Embeds each message and searches Qdrant for the nearest active discussion in the same channel/thread
+3. If it finds a match, appends the message to that case. If not, creates a new case
+4. Tracks when a conversation topic shifts (similarity drops + cohesion drops) and closes the case
+5. Closes cases that go quiet (no messages for 10 minutes)
+6. Runs AI analysis on triggers: case creation, topic shift, quiet closure, significant updates
+7. Each case gets: summary, status (active/investigating/resolved/dormant), routing (product-side/user-side/mixed), attention score (low/medium/high/critical), timeline of events, unresolved questions
+
+Good for: real-time awareness, active incident tracking, live dashboards.
+
+The two systems are completely independent. They read from the same cleaned messages table but write to different tables. The nightly pipeline marks messages with `semantic_processed_at`, the live engine marks them with `live_processed_at`.
+
+## Runtime
 
 ### Railway (always-on Node.js process)
 Runs `index.js` — the bot stays connected to Discord 24/7. Handles:
 - Real-time message ingestion
 - Periodic cleaning
-- Scheduled nightly pipeline (7 AM Beijing time via node-cron)
+- Scheduled nightly pipeline (11:55 PM Beijing time)
+- Live engine polling (every 15 seconds, if enabled)
 
 Deploys automatically on push to main.
 
@@ -89,7 +121,10 @@ lib/
 │   ├── cleanWorker.js                # 5-phase cleaning
 │   ├── mentionNormalizer.js          # <@id> → <@username>
 │   ├── normalizeText.js              # Text normalization
-│   └── noiseFilters.js               # Emoji-only, duplicate detection
+│   ├── noiseFilters.js               # Emoji-only, duplicate detection
+│   └── retentionCleanup.js           # 7-day raw message deletion (preserves monitored mentions)
+├── mentionBriefing/
+│   └── index.js                      # Real-time mention alert generation
 pipeline/
 ├── pipeline.config.js                # Model config, env requirements
 └── src/
@@ -103,10 +138,24 @@ pipeline/
     ├── embedder.js                   # Generate embeddings via Cloudflare
     ├── qdrantClient.js               # Vector DB upsert
     ├── batchTracker.js               # Redis-based dedup + distributed lock
-    ├── logger.js                     # Structured logging with batch IDs
-    ├── mentionBriefing.js            # Real-time mention alert generation
-    └── __tests__/
-        └── topicSummarizer.test.js   # 33 tests covering JSON extraction, LLM calls, error handling
+    └── logger.js                     # Structured logging with batch IDs
+live/
+├── live.config.js                    # Poll intervals, thresholds, model config
+└── src/
+    ├── index.js                      # Entry point — lifecycle, lock, health checks
+    ├── engine.js                     # Core logic — create/update/close cases
+    ├── state.js                      # In-memory centroid tracking + boundary detection
+    ├── storage.js                    # Supabase CRUD for live cases/messages/events
+    ├── analyzer.js                   # AI analysis (summary, status, routing, timeline)
+    ├── cloudflare.js                 # Embedding + LLM API client
+    ├── qdrantClient.js               # Vector search for matching active discussions
+    ├── lock.js                       # Redis distributed lock with ownership token
+    ├── health.js                     # Startup dependency checks
+    ├── vector.js                     # Vector math (cosine similarity, centroid update)
+    ├── retry.js                      # Exponential backoff with jitter
+    ├── metrics.js                    # Counters and gauges
+    ├── json.js                       # JSON extraction from LLM output
+    └── logger.js                     # Structured logging
 supabase/
 ├── config.toml                       # Supabase project config
 ├── migrations/
@@ -142,6 +191,13 @@ supabase/
 | `pipeline_topic_summaries` | AI summaries with sentiment, severity, key issues |
 | `pipeline_cluster_messages` | Which messages belong to which topic |
 
+### Live engine tables
+| Table | Purpose |
+|---|---|
+| `live_cases` | Active and closed discussion cases with summaries, status, routing, attention scores |
+| `live_case_messages` | Links messages to the case they belong to |
+| `live_case_events` | Timeline events (case created, topic shift, timeline update, case closed) |
+
 ### Database views
 | View | Purpose |
 |---|---|
@@ -171,13 +227,28 @@ supabase/
 | Variable | Description | Default |
 |---|---|---|
 | `PIPELINE_ENABLED` | Enable nightly analysis | `false` |
+| `PIPELINE_CRON` | Cron schedule (Beijing timezone) | `55 23 * * *` |
 | `MENTION_BRIEFING_ENABLED` | Enable mention alerts | `false` |
 | `CF_ACCOUNT_ID` | Cloudflare account for AI model | — |
 | `CF_API_TOKEN` | Cloudflare API token | — |
 | `QDRANT_URL` | Vector database URL | — |
 | `QDRANT_API_KEY` | Vector database key | — |
-| `REDIS_URL` | Redis for dedup/locking (optional, degrades gracefully) | — |
+| `QDRANT_PIPELINE_COLLECTION` | Qdrant collection for nightly pipeline | — |
+| `REDIS_URL` | Redis for dedup/locking | — |
 | `FORCE_FULL_PIPELINE` | Reprocess all history on next run | `false` |
+
+### Live Engine
+
+| Variable | Description | Default |
+|---|---|---|
+| `LIVE_ENGINE_ENABLED` | Enable real-time discussion tracking | `false` |
+| `LIVE_ENGINE_POLL_INTERVAL_MS` | How often to check for new messages | `15000` |
+| `LIVE_ENGINE_FETCH_LIMIT` | Max messages per poll tick | `25` |
+| `LIVE_ENGINE_QUIET_TIME_MINUTES` | Close cases after this many minutes of silence | `10` |
+| `LIVE_ENGINE_SIMILARITY_THRESHOLD` | How similar a message must be to match an active case | `0.62` |
+| `LIVE_ENGINE_COHESION_DROP_THRESHOLD` | How much cohesion must drop to signal a topic shift | `0.16` |
+| `LIVE_QDRANT_COLLECTION` | Qdrant collection for live vectors | `live_discussion_messages` |
+| `LIVE_ENGINE_CHAT_MODEL` | Cloudflare model for case analysis | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 
 ### Ingestion tuning
 
@@ -204,9 +275,11 @@ supabase/
 ```bash
 npm install
 cp .env.example .env   # Fill in your values
-npm start              # Bot + cleaning
-npm run pipeline       # Run pipeline manually once
-npm test               # Run summarizer tests (33 tests)
+npm start              # Bot + cleaning + live engine (if enabled)
+npm run pipeline       # Run nightly pipeline manually once
+npm run live           # Run live engine standalone
+npm run live:once      # Run one live engine tick
+npm test               # Run tests
 ```
 
 ## Adding the Bot to a Server

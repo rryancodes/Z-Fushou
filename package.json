@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "pipeline": "node pipeline/src/index.js",
+    "live": "node live/src/index.js",
+    "live:once": "node live/src/index.js --once",
     "test": "jest --forceExit",
     "build": "echo 'no build'"
   },
@@ -32,5 +34,10 @@
     "jest": "^30.3.0",
     "supabase": "^2.84.4",
     "typescript": "^5.9.3"
+  },
+  "jest": {
+    "testMatch": [
+      "**/__tests__/**/*.js"
+    ]
   }
 }
