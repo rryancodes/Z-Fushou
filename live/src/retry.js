@@ -17,7 +17,7 @@ async function withRetry(fn, options = {}) {
       return await fn(attempt);
     } catch (error) {
       if (logger) {
-        logger.warn(stage, `Attempt ${attempt}/${retries} failed`, {
+        logger.warn(stage, `Attempt ${attempt}/${retries} failed — ${error.message}`, {
           ...context,
           error: error.message,
         });

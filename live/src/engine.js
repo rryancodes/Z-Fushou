@@ -193,6 +193,15 @@ class LiveEngine {
       return null;
     }
 
+    const content = String(message.content).trim();
+    if (content.length < 5) {
+      logger.info('Message processing', `Skipping low-content message (${content.length} chars): "${content}"`, {
+        messageId: message.message_id,
+      });
+      await this.storage.markMessageProcessed(message.message_id);
+      return null;
+    }
+
     const embedding = await this.embedText(message.content, {
       stage: 'Embedding',
       messageId: message.message_id,
@@ -265,11 +274,12 @@ class LiveEngine {
         processed += 1;
         metrics.increment('messagesProcessed');
       } catch (error) {
-        logger.error('Message processing', 'Failed to process live message', {
+        const preview = String(message.content || '').slice(0, 80);
+        logger.error('Message processing', `Failed to process live message: ${error.message}`, {
           messageId: message.message_id,
           channelId: message.channel_id,
           threadId: message.thread_id,
-          error: error.message,
+          contentPreview: preview,
           stack: error.stack?.slice(0, 1000),
         });
       }
