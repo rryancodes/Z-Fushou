@@ -7,7 +7,26 @@ const { LiveEngine, validateEnv } = require('./engine');
 const { checkDependencies } = require('./health');
 const lock = require('./lock');
 
+const LOCK_RETRY_ATTEMPTS = 5;
+const LOCK_RETRY_DELAY_MS = 15000;
+
 let stopped = false;
+
+async function acquireLockWithRetries() {
+  for (let attempt = 1; attempt <= LOCK_RETRY_ATTEMPTS; attempt++) {
+    const acquired = await lock.acquireLock();
+    if (acquired) return true;
+
+    logger.warn('Startup', `Lock busy (attempt ${attempt}/${LOCK_RETRY_ATTEMPTS}) — waiting for previous instance to release`, {
+      retryInMs: LOCK_RETRY_DELAY_MS,
+    });
+
+    if (attempt < LOCK_RETRY_ATTEMPTS) {
+      await sleep(LOCK_RETRY_DELAY_MS);
+    }
+  }
+  return false;
+}
 
 async function runLiveEngine() {
   validateEnv();
@@ -16,10 +35,12 @@ async function runLiveEngine() {
   await checkDependencies();
 
   // Acquire distributed lock — prevents duplicate workers
+  // Retries to handle rolling deploys where the old instance
+  // still holds the lock briefly before shutting down
   await lock.initRedis();
-  const acquired = await lock.acquireLock();
+  const acquired = await acquireLockWithRetries();
   if (!acquired) {
-    throw new Error('Live engine lock already held — another instance is running. Exiting.');
+    throw new Error(`Live engine lock held after ${LOCK_RETRY_ATTEMPTS} attempts — another instance may be stuck. Exiting.`);
   }
 
   const engine = new LiveEngine();
@@ -62,9 +83,9 @@ async function runLiveEngineOnce() {
   await checkDependencies();
 
   await lock.initRedis();
-  const acquired = await lock.acquireLock();
+  const acquired = await acquireLockWithRetries();
   if (!acquired) {
-    throw new Error('Live engine lock already held — another instance is running.');
+    throw new Error(`Live engine lock held after ${LOCK_RETRY_ATTEMPTS} attempts.`);
   }
 
   try {
