@@ -85,6 +85,10 @@ async function analyzeCase({ trigger, caseRow, messages }) {
     'Track the current state of one active discussion, not a whole day.',
     'Decide ownership only as product-side, user-side, mixed, or unknown.',
     'Only add timeline entries for significant changes, confirmations, resolution, scope changes, or important new facts.',
+    'Write summaries about WHAT the issue is, not meta-descriptions like "user reported" or "a new case was created".',
+    'Bad summary: "User reported a vague issue without providing details."',
+    'Good summary: "API returns 400 errors on VSCode extension when using z.ai proxy with GLM models."',
+    'Always include concrete product names, error types, and specific details from the messages.',
     'Return raw JSON only.',
   ].join(' ');
 
@@ -113,7 +117,7 @@ Return ONLY this JSON object:
   "attention_score": "low | medium | high | critical",
   "timeline": [{"time":"ISO timestamp or null","summary":"significant event"}],
   "unresolved_questions": ["question still unanswered (max 5)"],
-  "event_summary": "one sentence explaining what changed for this trigger"
+  "event_summary": "one sentence about the actual issue or topic discussed, not a meta-description of what happened"
 }`;
 
   const { content } = await callLLM(systemPrompt, userPrompt, {

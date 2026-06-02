@@ -284,13 +284,14 @@ class LiveEngine {
   async reopenCase(closedCaseRow, message, embedding, matchScore) {
     const caseId = closedCaseRow.id;
 
-    // Reopen in Supabase
+    // Reopen in Supabase — always use current time for last_seen_at
+    // to prevent immediate stale closure
     let caseRow = await this.storage.updateCase(caseId, {
       status: 'open',
       state: 'active',
       current_status: 'active',
       last_message_id: message.message_id,
-      last_seen_at: message.timestamp || new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
       message_count: (closedCaseRow.message_count || 0) + 1,
       update_count: (closedCaseRow.update_count || 0) + 1,
       last_similarity: matchScore,
