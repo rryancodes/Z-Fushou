@@ -229,7 +229,7 @@ supabase/
 | Variable | Description | Default |
 |---|---|---|
 | `PIPELINE_ENABLED` | Enable nightly analysis | `false` |
-| `PIPELINE_CRON` | Cron schedule (Beijing timezone) | `55 23 * * *` |
+| `PIPELINE_CRON` | Cron schedule (Beijing timezone) | `50 23 * * *` |
 | `MENTION_BRIEFING_ENABLED` | Enable mention alerts | `false` |
 | `PIPELINE_CF_ACCOUNT_ID` | Cloudflare account for pipeline AI model | — |
 | `PIPELINE_CF_API_TOKEN` | Cloudflare API token for pipeline | — |
