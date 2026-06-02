@@ -27,7 +27,6 @@ async function runLiveEngine() {
 
   logger.info('Startup', 'Live engine started', {
     pollIntervalMs: LIVE_CONFIG.POLL_INTERVAL_MS,
-    quietTimeMinutes: LIVE_CONFIG.QUIET_TIME_MINUTES,
     fetchLimit: LIVE_CONFIG.FETCH_LIMIT,
   });
 
