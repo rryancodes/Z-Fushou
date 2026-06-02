@@ -74,12 +74,14 @@ Good for: daily reports, historical analysis, trend charts.
 
 Runs continuously every 15 seconds. Processes new messages as they arrive:
 1. Picks up cleaned messages not yet processed by the live engine
-2. Embeds each message and searches Qdrant for the nearest active discussion in the same channel/thread
-3. If it finds a match, appends the message to that case. If not, creates a new case
-4. Tracks when a conversation topic shifts (similarity drops + cohesion drops) and closes the case
-5. Closes cases that go quiet (no messages for 10 minutes)
-6. Runs AI analysis on triggers: case creation, topic shift, quiet closure, significant updates
-7. Each case gets: summary, status (active/investigating/resolved/dormant), routing (product-side/user-side/mixed), attention score (low/medium/high/critical), timeline of events, unresolved questions
+2. Embeds each message and searches Qdrant for the nearest active discussion across the entire server (guild-wide)
+3. Two-tier matching: same channel/thread accepts at 0.55, cross-channel requires 0.75
+4. If it finds a match, appends the message to that case. If not, checks recently-closed cases (within 3 hours) for context continuation before creating a new case
+5. Tracks when a conversation topic shifts (similarity drops + cohesion drops) and closes the case
+6. Closes cases that go quiet (no messages for 10 minutes)
+7. Detects when the AI says the issue is resolved and closes the case
+8. Daily reset at 2AM Beijing time: closes all remaining open cases and wipes Qdrant vectors for a clean slate
+9. Each case gets: summary, status (active/investigating/resolved/dormant), routing (product-side/user-side/mixed), attention score (low/medium/high/critical), timeline of events, unresolved questions
 
 Good for: real-time awareness, active incident tracking, live dashboards.
 
@@ -229,8 +231,8 @@ supabase/
 | `PIPELINE_ENABLED` | Enable nightly analysis | `false` |
 | `PIPELINE_CRON` | Cron schedule (Beijing timezone) | `55 23 * * *` |
 | `MENTION_BRIEFING_ENABLED` | Enable mention alerts | `false` |
-| `CF_ACCOUNT_ID` | Cloudflare account for AI model | — |
-| `CF_API_TOKEN` | Cloudflare API token | — |
+| `PIPELINE_CF_ACCOUNT_ID` | Cloudflare account for pipeline AI model | — |
+| `PIPELINE_CF_API_TOKEN` | Cloudflare API token for pipeline | — |
 | `QDRANT_URL` | Vector database URL | — |
 | `QDRANT_API_KEY` | Vector database key | — |
 | `QDRANT_PIPELINE_COLLECTION` | Qdrant collection for nightly pipeline | — |
@@ -244,9 +246,18 @@ supabase/
 | `LIVE_ENGINE_ENABLED` | Enable real-time discussion tracking | `false` |
 | `LIVE_ENGINE_POLL_INTERVAL_MS` | How often to check for new messages | `15000` |
 | `LIVE_ENGINE_FETCH_LIMIT` | Max messages per poll tick | `25` |
-| `LIVE_ENGINE_QUIET_TIME_MINUTES` | Close cases after this many minutes of silence | `10` |
-| `LIVE_ENGINE_SIMILARITY_THRESHOLD` | How similar a message must be to match an active case | `0.62` |
-| `LIVE_ENGINE_COHESION_DROP_THRESHOLD` | How much cohesion must drop to signal a topic shift | `0.16` |
+| `CF_ACCOUNT_ID` | Cloudflare account for live engine AI model | — |
+| `CF_API_TOKEN` | Cloudflare API token for live engine | — |
+| `QDRANT_URL` | Vector database URL | — |
+| `QDRANT_API_KEY` | Vector database key | — |
+| `LIVE_ENGINE_MATCH_MIN_SCORE` | Same-channel similarity threshold to match a case | `0.55` |
+| `LIVE_ENGINE_CROSS_CHANNEL_MIN_SCORE` | Cross-channel similarity threshold | `0.75` |
+| `LIVE_ENGINE_SIMILARITY_THRESHOLD` | Boundary: max similarity to detect topic shift | `0.62` |
+| `LIVE_ENGINE_COHESION_DROP_THRESHOLD` | Boundary: cohesion drop to detect topic shift | `0.16` |
+| `LIVE_ENGINE_STALE_CASE_MINUTES` | Close cases with no activity after N minutes | `10` |
+| `LIVE_ENGINE_CASE_REOPEN_WINDOW_HOURS` | How long after closing can a case be reopened | `3` |
+| `LIVE_ENGINE_CASE_REOPEN_MIN_SCORE` | Similarity threshold to reopen a closed case | `0.65` |
+| `LIVE_ENGINE_DAILY_RESET_HOUR_UTC` | UTC hour to close all cases and wipe vectors | `18` |
 | `LIVE_QDRANT_COLLECTION` | Qdrant collection for live vectors | `live_discussion_messages` |
 | `LIVE_ENGINE_CHAT_MODEL` | Cloudflare model for case analysis | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` |
 

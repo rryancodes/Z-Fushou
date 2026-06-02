@@ -1,8 +1,8 @@
 const logger = require('./logger');
 const { PIPELINE_CONFIG } = require('../pipeline.config');
 
-const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-const CF_API_TOKEN = process.env.CF_API_TOKEN;
+const CF_ACCOUNT_ID = process.env.PIPELINE_CF_ACCOUNT_ID;
+const CF_API_TOKEN = process.env.PIPELINE_CF_API_TOKEN;
 const CHAT_MODEL = PIPELINE_CONFIG.CHAT_MODEL;
 
 const CHAT_ENDPOINT = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/v1/chat/completions`;

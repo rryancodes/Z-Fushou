@@ -99,22 +99,21 @@ async function ensurePayloadIndexes() {
   });
 }
 
-function threadCondition(threadId) {
-  if (threadId) {
-    return { key: 'thread_id', match: { value: threadId } };
-  }
-  return { is_empty: { key: 'thread_id' } };
-}
-
-function activeCaseFilter(message) {
+function guildOpenCaseFilter(message) {
   return {
     must: [
       { key: 'case_status', match: { value: 'open' } },
       { key: 'guild_id', match: { value: message.guild_id } },
-      { key: 'channel_id', match: { value: message.channel_id } },
-      threadCondition(message.thread_id),
     ],
   };
+}
+
+function isSameChannel(message, hit) {
+  if (hit.payload.channel_id !== message.channel_id) return false;
+  if (message.thread_id) {
+    return hit.payload.thread_id === message.thread_id;
+  }
+  return !hit.payload.thread_id;
 }
 
 async function searchActiveDiscussion(embedding, message) {
@@ -126,7 +125,7 @@ async function searchActiveDiscussion(embedding, message) {
         vector: embedding,
         limit: LIVE_CONFIG.QDRANT_SEARCH_LIMIT,
         with_payload: true,
-        filter: activeCaseFilter(message),
+        filter: guildOpenCaseFilter(message),
       }),
     });
 
@@ -137,20 +136,86 @@ async function searchActiveDiscussion(embedding, message) {
 
     const json = await res.json();
     const hits = json?.result || [];
-    const best = hits.find((hit) => hit?.payload?.case_id && hit.score >= LIVE_CONFIG.MATCH_MIN_SCORE);
-    if (!best) return null;
+    if (hits.length === 0) return null;
 
-    logger.info('Qdrant', 'Matched active discussion', {
-      caseId: best.payload.case_id,
-      score: Number(best.score.toFixed(4)),
-      messageId: message.message_id,
+    // Two-tier matching:
+    // Same channel/thread → accept at MATCH_MIN_SCORE (0.55)
+    // Cross-channel       → require CROSS_CHANNEL_MIN_SCORE (0.75)
+    for (const hit of hits) {
+      if (!hit?.payload?.case_id) continue;
+      const sameChannel = isSameChannel(message, hit);
+      const threshold = sameChannel ? LIVE_CONFIG.MATCH_MIN_SCORE : LIVE_CONFIG.CROSS_CHANNEL_MIN_SCORE;
+      if (hit.score >= threshold) {
+        logger.info('Qdrant', 'Matched active discussion', {
+          caseId: hit.payload.case_id,
+          score: Number(hit.score.toFixed(4)),
+          crossChannel: !sameChannel,
+          messageId: message.message_id,
+        });
+        return {
+          caseId: hit.payload.case_id,
+          score: hit.score || 0,
+          payload: hit.payload,
+        };
+      }
+    }
+
+    return null;
+  }, { messageId: message.message_id });
+}
+
+async function searchByCaseIds(embedding, caseIds, message) {
+  if (!caseIds || caseIds.length === 0) return null;
+
+  return qdrantRetry('Qdrant search closed cases by IDs', async () => {
+    const res = await fetch(qdrantUrl(`/collections/${LIVE_CONFIG.QDRANT_COLLECTION}/points/search`), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        vector: embedding,
+        limit: caseIds.length * 3,
+        with_payload: true,
+        filter: {
+          should: caseIds.map((id) => ({
+            key: 'case_id',
+            match: { value: id },
+          })),
+        },
+      }),
     });
 
-    return {
-      caseId: best.payload.case_id,
-      score: best.score || 0,
-      payload: best.payload,
-    };
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Qdrant search by case IDs failed: ${res.status} ${body.slice(0, 300)}`);
+    }
+
+    const json = await res.json();
+    const hits = json?.result || [];
+    if (hits.length === 0) return null;
+
+    const sameChannel = isSameChannel(message, hits[0]);
+    const threshold = sameChannel ? LIVE_CONFIG.CASE_REOPEN_MIN_SCORE : LIVE_CONFIG.CROSS_CHANNEL_MIN_SCORE;
+
+    for (const hit of hits) {
+      if (!hit?.payload?.case_id) continue;
+      const hitSameChannel = isSameChannel(message, hit);
+      const hitThreshold = hitSameChannel ? LIVE_CONFIG.CASE_REOPEN_MIN_SCORE : LIVE_CONFIG.CROSS_CHANNEL_MIN_SCORE;
+      if (hit.score >= hitThreshold) {
+        logger.info('Qdrant', 'Matched recently closed case', {
+          caseId: hit.payload.case_id,
+          score: Number(hit.score.toFixed(4)),
+          crossChannel: !hitSameChannel,
+          messageId: message.message_id,
+        });
+        return {
+          caseId: hit.payload.case_id,
+          score: hit.score || 0,
+          payload: hit.payload,
+        };
+      }
+    }
+
+    return null;
   }, { messageId: message.message_id });
 }
 
@@ -213,6 +278,28 @@ async function markCaseClosed(caseId) {
   }, { caseId });
 }
 
+async function markCaseReopened(caseId) {
+  return qdrantRetry('Qdrant mark case reopened', async () => {
+    const res = await fetch(qdrantUrl(`/collections/${LIVE_CONFIG.QDRANT_COLLECTION}/points/payload`), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        payload: { case_status: 'open' },
+        filter: {
+          must: [
+            { key: 'case_id', match: { value: caseId } },
+          ],
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Qdrant reopen payload update failed: ${res.status} ${body.slice(0, 300)}`);
+    }
+  }, { caseId });
+}
+
 async function fetchRecentCaseEmbeddings(caseId, limit = LIVE_CONFIG.REBUILD_MESSAGE_LIMIT) {
   return qdrantRetry('Qdrant fetch case embeddings', async () => {
     const res = await fetch(qdrantUrl(`/collections/${LIVE_CONFIG.QDRANT_COLLECTION}/points/scroll`), {
@@ -249,12 +336,40 @@ async function fetchRecentCaseEmbeddings(caseId, limit = LIVE_CONFIG.REBUILD_MES
   }, { caseId });
 }
 
+async function deleteClosedPoints() {
+  return qdrantRetry('Qdrant delete closed points', async () => {
+    const res = await fetch(qdrantUrl(`/collections/${LIVE_CONFIG.QDRANT_COLLECTION}/points/delete`), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        filter: {
+          must: [
+            { key: 'case_status', match: { value: 'closed' } },
+          ],
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Qdrant delete closed points failed: ${res.status} ${body.slice(0, 300)}`);
+    }
+
+    logger.info('Qdrant', 'Deleted all closed points', {
+      collection: LIVE_CONFIG.QDRANT_COLLECTION,
+    });
+  });
+}
+
 module.exports = {
   ensureCollectionExists,
   ensurePayloadIndexes,
   searchActiveDiscussion,
+  searchByCaseIds,
   upsertLiveMessage,
   markCaseClosed,
+  markCaseReopened,
+  deleteClosedPoints,
   fetchRecentCaseEmbeddings,
   pointIdForMessage,
 };

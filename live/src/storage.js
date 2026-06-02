@@ -206,6 +206,39 @@ async function markMessageProcessed(messageId) {
   }, { messageId });
 }
 
+async function fetchStaleOpenCases(staleMinutes = LIVE_CONFIG.STALE_CASE_MINUTES) {
+  return dbRetry('Supabase fetch stale open cases', async () => {
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString();
+    const { data, error } = await getSupabase()
+      .from('live_cases')
+      .select('*')
+      .eq('status', 'open')
+      .lt('last_seen_at', cutoff)
+      .order('last_seen_at', { ascending: true })
+      .limit(200);
+
+    if (error) throw error;
+    return data || [];
+  });
+}
+
+async function fetchRecentlyClosedCases(guildId, windowHours = LIVE_CONFIG.CASE_REOPEN_WINDOW_HOURS) {
+  return dbRetry('Supabase fetch recently closed cases', async () => {
+    const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+    const { data, error } = await getSupabase()
+      .from('live_cases')
+      .select('id, summary, current_status, routing_type, attention_score, timeline, unresolved_questions, message_count, channel_id, thread_id')
+      .eq('status', 'closed')
+      .eq('guild_id', guildId)
+      .gt('updated_at', cutoff)
+      .order('updated_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+    return data || [];
+  }, { guildId });
+}
+
 async function fetchCaseMessages(caseId, limit = LIVE_CONFIG.REBUILD_MESSAGE_LIMIT) {
   return dbRetry('Supabase fetch case messages', async () => {
     const db = getSupabase();
@@ -277,6 +310,8 @@ module.exports = {
   setSupabaseClient,
   fetchUnprocessedMessages,
   fetchOpenCases,
+  fetchStaleOpenCases,
+  fetchRecentlyClosedCases,
   getCaseById,
   findCaseByMessageId,
   createCase,

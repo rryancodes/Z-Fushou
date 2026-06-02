@@ -1,8 +1,8 @@
 const logger = require('./logger');
 const { PIPELINE_CONFIG } = require('../pipeline.config');
 
-const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/ai/run`;
-const CF_TOKEN = process.env.CF_API_TOKEN;
+const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${process.env.PIPELINE_CF_ACCOUNT_ID}/ai/run`;
+const CF_TOKEN = process.env.PIPELINE_CF_API_TOKEN;
 const EMBEDDING_MODEL = PIPELINE_CONFIG.EMBEDDING_MODEL;
 
 /**

@@ -34,6 +34,7 @@ class LiveEngine {
     this.embedText = options.embedText || embedText;
     this.analyzeCase = options.analyzeCase || analyzeCase;
     this.refreshLock = options.refreshLock || (() => Promise.resolve(true));
+    this.lastDailyResetDate = null;
   }
 
   async initialize() {
@@ -188,7 +189,164 @@ class LiveEngine {
     return updatedCase;
   }
 
-  async processMessage(message) {
+  async closeStaleCases() {
+    const staleCases = await this.storage.fetchStaleOpenCases();
+    if (staleCases.length === 0) return 0;
+
+    logger.info('Stale closure', 'Closing stale open cases', { count: staleCases.length });
+
+    let closed = 0;
+    for (const caseRow of staleCases) {
+      try {
+        await this.storage.updateCase(caseRow.id, {
+          status: 'closed',
+          state: 'closed',
+          current_status: 'dormant',
+        });
+        await this.storage.createEvent(caseRow.id, 'stale_closed', `Case closed after ${LIVE_CONFIG.STALE_CASE_MINUTES} minutes of inactivity`);
+        await this.qdrant.markCaseClosed(caseRow.id);
+        this.stateStore.forget(caseRow.id);
+        metrics.increment('caseClosureCount');
+        closed += 1;
+      } catch (error) {
+        logger.error('Stale closure', 'Failed to close stale case', {
+          caseId: caseRow.id,
+          error: error.message,
+        });
+      }
+    }
+
+    logger.info('Stale closure', 'Closed stale cases', { closed, total: staleCases.length });
+    return closed;
+  }
+
+  async dailyReset() {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const todayStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+
+    // Only run if we're past the reset hour and haven't run yet today
+    if (utcHour < LIVE_CONFIG.DAILY_RESET_HOUR_UTC) return 0;
+    if (this.lastDailyResetDate === todayStr) return 0;
+
+    const openCases = await this.storage.fetchOpenCases();
+    if (openCases.length === 0) {
+      this.lastDailyResetDate = todayStr;
+      return 0;
+    }
+
+    logger.info('Daily reset', 'Closing all remaining open cases for daily reset', {
+      count: openCases.length,
+      resetHour: LIVE_CONFIG.DAILY_RESET_HOUR_UTC,
+    });
+
+    let closed = 0;
+    for (const caseRow of openCases) {
+      try {
+        await this.storage.updateCase(caseRow.id, {
+          status: 'closed',
+          state: 'closed',
+          current_status: 'dormant',
+        });
+        await this.storage.createEvent(caseRow.id, 'daily_reset', 'Case closed by daily reset');
+        await this.qdrant.markCaseClosed(caseRow.id);
+        this.stateStore.forget(caseRow.id);
+        metrics.increment('caseClosureCount');
+        closed += 1;
+      } catch (error) {
+        logger.error('Daily reset', 'Failed to close case during daily reset', {
+          caseId: caseRow.id,
+          error: error.message,
+        });
+      }
+    }
+
+    this.lastDailyResetDate = todayStr;
+
+    // Wipe all closed Qdrant points — fresh start for the new day
+    try {
+      await this.qdrant.deleteClosedPoints();
+    } catch (error) {
+      logger.error('Daily reset', 'Failed to delete closed Qdrant points', {
+        error: error.message,
+      });
+    }
+
+    logger.info('Daily reset', 'Daily reset complete', {
+      closed,
+      total: openCases.length,
+      date: todayStr,
+    });
+
+    return closed;
+  }
+
+  async reopenCase(closedCaseRow, message, embedding, matchScore) {
+    const caseId = closedCaseRow.id;
+
+    // Reopen in Supabase
+    let caseRow = await this.storage.updateCase(caseId, {
+      status: 'open',
+      state: 'active',
+      current_status: 'active',
+      last_message_id: message.message_id,
+      last_seen_at: message.timestamp || new Date().toISOString(),
+      message_count: (closedCaseRow.message_count || 0) + 1,
+      update_count: (closedCaseRow.update_count || 0) + 1,
+      last_similarity: matchScore,
+      confidence: matchScore,
+    });
+
+    // Link the new message to the reopened case
+    await this.storage.linkMessage(caseId, message);
+
+    // Reopen Qdrant points — flip all old points back to 'open'
+    await this.qdrant.markCaseReopened(caseId);
+    // Upsert the new message with open status
+    await this.qdrant.upsertLiveMessage(message, caseRow, embedding);
+
+    // Rebuild in-memory centroid from Qdrant vectors
+    await this.rebuildState(caseRow);
+
+    // Fetch ALL messages (old + new) and run full LLM analysis with context
+    const messages = await this.storage.fetchCaseMessages(caseId, LIVE_CONFIG.REBUILD_MESSAGE_LIMIT);
+    const analysis = await this.analyzeCase({
+      trigger: 'case_reopened',
+      caseRow,
+      messages,
+    });
+
+    if (analysis.current_status === 'resolved') {
+      await this.storage.updateCase(caseId, {
+        ...analysisPatch(caseRow, analysis),
+        status: 'closed',
+        state: 'closed',
+        current_status: 'resolved',
+      });
+      await this.storage.createEvent(caseId, 'resolution_detected', analysis.event_summary || analysis.summary, message.message_id);
+      await this.storage.createEvent(caseId, 'case_closed', analysis.summary, message.message_id);
+      await this.qdrant.markCaseClosed(caseId);
+      this.stateStore.forget(caseId);
+      metrics.increment('caseClosureCount');
+    } else {
+      caseRow = await this.storage.updateCase(caseId, analysisPatch(caseRow, analysis));
+      this.stateStore.resetAnalysisCounter(caseId);
+    }
+
+    await this.storage.createEvent(caseId, 'case_reopened', analysis.event_summary || `Case reopened — new message matched closed case (score: ${matchScore.toFixed(4)})`, message.message_id);
+    metrics.increment('caseReopenCount');
+
+    logger.info('Case reopen', 'Reopened closed case with new message', {
+      caseId,
+      messageId: message.message_id,
+      matchScore: Number(matchScore.toFixed(4)),
+      previousMessages: closedCaseRow.message_count || 0,
+    });
+
+    return caseRow;
+  }
+
+  async processMessage(message, batchContext = {}) {
     if (!message.content || !String(message.content).trim()) {
       await this.storage.markMessageProcessed(message.message_id);
       return null;
@@ -217,10 +375,10 @@ class LiveEngine {
           caseRow: retryCase,
           messages: [message],
         });
-        recoveredCase = await this.storage.updateCase(retryCase.id, analysisPatch(retryCase, analysis));
-        await this.storage.createEvent(retryCase.id, 'case_created', analysis.event_summary || analysis.summary, message.message_id);
-        this.stateStore.init(retryCase.id, message, embedding);
-        this.stateStore.resetAnalysisCounter(retryCase.id);
+        recoveredCase = await this.storage.updateCase(recoveredCase.id, analysisPatch(recoveredCase, analysis));
+        await this.storage.createEvent(recoveredCase.id, 'case_created', analysis.event_summary || analysis.summary, message.message_id);
+        this.stateStore.init(recoveredCase.id, message, embedding);
+        this.stateStore.resetAnalysisCounter(recoveredCase.id);
       }
 
       await this.qdrant.upsertLiveMessage(message, recoveredCase, embedding);
@@ -239,6 +397,29 @@ class LiveEngine {
     }
 
     if (!caseRow) {
+      // No open case matched — check recently-closed cases for context continuation
+      // Uses batch-cached closed case list to avoid repeated Supabase queries
+      try {
+        const closedCases = batchContext.closedCases || [];
+        if (closedCases.length > 0) {
+          const closedCaseIds = closedCases.map((c) => c.id);
+          const closedMatch = await this.qdrant.searchByCaseIds(embedding, closedCaseIds, message);
+          if (closedMatch) {
+            const closedCaseRow = closedCases.find((c) => c.id === closedMatch.caseId) || await this.storage.getCaseById(closedMatch.caseId);
+            if (closedCaseRow) {
+              const reopened = await this.reopenCase(closedCaseRow, message, embedding, closedMatch.score);
+              await this.storage.markMessageProcessed(message.message_id);
+              return reopened;
+            }
+          }
+        }
+      } catch (error) {
+        logger.error('Case reopen', 'Failed to check closed cases, creating new case instead', {
+          error: error.message,
+          messageId: message.message_id,
+        });
+      }
+
       const created = await this.createAndAnalyzeCase(message, embedding);
       await this.storage.markMessageProcessed(message.message_id);
       return created;
@@ -268,10 +449,28 @@ class LiveEngine {
 
     logger.info('Polling', 'Fetched live messages', { count: messages.length });
 
+    // Fetch recently-closed cases once for the entire batch
+    let closedCases = [];
+    try {
+      const guildIds = [...new Set(messages.map((m) => m.guild_id).filter(Boolean))];
+      if (guildIds.length > 0) {
+        const allClosed = await Promise.all(
+          guildIds.map((gid) => this.storage.fetchRecentlyClosedCases(gid, LIVE_CONFIG.CASE_REOPEN_WINDOW_HOURS)),
+        );
+        closedCases = allClosed.flat();
+      }
+    } catch (error) {
+      logger.error('Polling', 'Failed to prefetch closed cases for batch', {
+        error: error.message,
+      });
+    }
+
+    const batchContext = { closedCases };
+
     let processed = 0;
     for (const message of messages) {
       try {
-        await this.processMessage(message);
+        await this.processMessage(message, batchContext);
         processed += 1;
         metrics.increment('messagesProcessed');
 
@@ -300,6 +499,8 @@ class LiveEngine {
 
   async tick() {
     const processed = await this.processBatch();
+    await this.closeStaleCases();
+    await this.dailyReset();
     await this.logOperationalMetrics(processed);
     return { processed };
   }
