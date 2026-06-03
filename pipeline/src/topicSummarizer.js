@@ -178,7 +178,7 @@ async function summarizeTopic(topicLabel, segments) {
 
 ANALYSIS REQUIREMENTS:
 
- 1. **Summary Paragraph** (5-10 sentences — be detailed and specific):
+  1. **Summary Paragraph** (5-7 sentences — be detailed and specific):
     - What is the main topic/issue?
     - What exactly are users talking about? Include specific details, problems, product names, error messages, feature names, and concrete examples from the conversation — not vague summaries.
     - What happened and when?
@@ -218,7 +218,7 @@ CONVERSATION DATA:
 ${conversationText}
 
 OUTPUT FORMAT — RAW JSON ONLY:
-{"summary":"Your 3-5 sentence summary","key_issues":["Issue 1","Issue 2"],"unanswered_questions":["Question 1"],"sentiment":"frustrated or confused or neutral or satisfied","severity":"critical or high or medium or low"}
+{"summary":"Your 5-7 sentence summary","key_issues":["Issue 1","Issue 2"],"unanswered_questions":["Question 1"],"sentiment":"frustrated or confused or neutral or satisfied","severity":"critical or high or medium or low"}
 
 CRITICAL RULES:
 - Return ONLY the raw JSON object — no markdown, no code fences, no backticks, no explanation text before or after

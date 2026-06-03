@@ -81,16 +81,38 @@ function formatMessages(messages, limit = 40) {
 
 async function analyzeCase({ trigger, caseRow, messages }) {
   const systemPrompt = [
-    'You are a real-time Discord incident and topic tracking analyst.',
-    'Track the current state of one active discussion, not a whole day.',
-    'Decide ownership only as product-side, user-side, mixed, or unknown.',
-    'Only add timeline entries for significant changes, confirmations, resolution, scope changes, or important new facts.',
-    'Write summaries about WHAT the issue is, not meta-descriptions like "user reported" or "a new case was created".',
-    'Bad summary: "User reported a vague issue without providing details."',
-    'Good summary: "API returns 400 errors on VSCode extension when using z.ai proxy with GLM models."',
-    'Always include concrete product names, error types, and specific details from the messages.',
+    'You are a real-time Discord discussion analyst on a Z.AI product community server.',
+    'Users discuss Z.AI products: GLM models, API (api.z.ai), coding tools, billing, plans,',
+    'and related AI tools and services. This includes but is not limited to tools like',
+    'Claude Code, VSCode extensions, Opencode, Cline, or similar coding assistants.',
+    'Never assume a specific tool name if the user didn\'t say it — use exactly what they said.',
+    '',
+    'When users say "the API" they mean Z.AI API. "The model" means GLM. "My plan" means Z.AI subscription.',
+    'Never write "unspecified product" or "no details provided" — infer from context.',
+    '',
+    'Your job is to identify WHAT users are talking about — not just problems or issues.',
+    'Discussions can be: bug reports, feature requests, questions, feedback, comparisons,',
+    'general discussion, or praise. Describe the topic accurately.',
+    '',
+    'SUMMARY RULES:',
+    '- One single line describing what is being discussed.',
+    '- Bad: "User reported a vague issue without providing details"',
+    '- Bad: "Discussion about an unspecified product or service"',
+    '- Good: "Z.AI API returns 500 errors on VSCode extension with GLM models"',
+    '- Good: "User asks about token limits and context window for GLM 5.1"',
+    '- Good: "Users comparing GLM vs DeepSeek for coding tasks"',
+    '',
+    'UNRESOLVED QUESTIONS RULES:',
+    '- ONLY include questions that users ACTUALLY asked in their messages.',
+    '- NEVER fabricate or invent questions.',
+    '- If no user asked a question, return an empty array [].',
+    '',
+    'TIMELINE RULES:',
+    '- Only add entries for significant changes, confirmations, resolution, scope changes, or important new facts.',
+    '- Describe what was said, not meta-commentary about the discussion.',
+    '',
     'Return raw JSON only.',
-  ].join(' ');
+  ].join('\n');
 
   const userPrompt = `Analyze this live discussion for trigger "${trigger}".
 
@@ -111,13 +133,13 @@ ${formatMessages(messages)}
 
 Return ONLY this JSON object:
 {
-  "summary": "2-4 sentence current summary with concrete product/issue details (max 500 chars)",
+  "summary": "one line describing what is being discussed",
   "current_status": "active | investigating | resolved | dormant",
   "routing_type": "product-side | user-side | mixed | unknown",
   "attention_score": "low | medium | high | critical",
-  "timeline": [{"time":"ISO timestamp or null","summary":"significant event"}],
-  "unresolved_questions": ["question still unanswered (max 5)"],
-  "event_summary": "one sentence about the actual issue or topic discussed, not a meta-description of what happened"
+  "timeline": [{"time":"ISO timestamp or null","summary":"what was said"}],
+  "unresolved_questions": ["ONLY questions users actually asked in messages. Empty array if none asked."],
+  "event_summary": "one line about the actual topic discussed"
 }`;
 
   const { content } = await callLLM(systemPrompt, userPrompt, {

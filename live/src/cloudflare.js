@@ -75,7 +75,7 @@ async function callLLM(systemPrompt, userContent, context = {}) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.1,
+        temperature: 0.3,
         max_tokens: 1200,
       }),
     }, 30000);
