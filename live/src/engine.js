@@ -8,10 +8,12 @@ const qdrantClient = require('./qdrantClient');
 const metrics = require('./metrics');
 
 function validateEnv() {
+  const { validateCredentials } = require('../../lib/cfCredentials');
   const missing = LIVE_CONFIG.REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     throw new Error(`Missing required live engine environment variables: ${missing.join(', ')}`);
   }
+  validateCredentials();
 }
 
 function analysisPatch(caseRow, analysis) {

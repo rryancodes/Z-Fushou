@@ -2,13 +2,16 @@ const { LIVE_CONFIG } = require('../live.config');
 const logger = require('./logger');
 const { withRetry } = require('./retry');
 const { normalize, isNormalized } = require('./vector');
+const { getCredentials } = require('../../lib/cfCredentials');
 
 function embeddingEndpoint() {
-  return `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/ai/run/${LIVE_CONFIG.EMBEDDING_MODEL}`;
+  const { accountId } = getCredentials();
+  return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${LIVE_CONFIG.EMBEDDING_MODEL}`;
 }
 
 function chatEndpoint() {
-  return `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID}/ai/v1/chat/completions`;
+  const { accountId } = getCredentials();
+  return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -29,10 +32,12 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 async function embedText(text, context = {}) {
   return withRetry(async () => {
+    const { apiToken } = getCredentials();
+
     const res = await fetchWithTimeout(embeddingEndpoint(), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.CF_API_TOKEN}`,
+        Authorization: `Bearer ${apiToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -63,10 +68,12 @@ async function embedText(text, context = {}) {
 
 async function callLLM(systemPrompt, userContent, context = {}) {
   return withRetry(async () => {
+    const { apiToken } = getCredentials();
+
     const res = await fetchWithTimeout(chatEndpoint(), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.CF_API_TOKEN}`,
+        Authorization: `Bearer ${apiToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
