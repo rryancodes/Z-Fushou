@@ -210,7 +210,8 @@ ANALYSIS REQUIREMENTS:
     - medium: Minor bug, workaround exists, moderate user impact
     - low: Cosmetic issue, feature request, or minimal user impact
 
-Be thorough and detailed. Include specific error codes, affected features, and user quotes when relevant. Do not omit important details or emotional context.`;
+Be thorough and detailed. Include specific error codes, affected features, and user quotes when relevant. Do not omit important details or emotional context.
+IMPORTANT: When quoting users or mentioning phrases in quotes, escape all double quotes inside JSON string values (use \\\" not bare ").`;
 
   const userPrompt = `Analyze this community discussion about "${topicLabel}" and provide a comprehensive summary.
 
@@ -225,7 +226,8 @@ CRITICAL RULES:
 - Do NOT wrap the JSON in \`\`\`json blocks
 - Do NOT add any text before or after the JSON object
 - If no unanswered questions, use empty array []
-- If no key issues, use empty array []`;
+- If no key issues, use empty array []
+- Escape all double quotes inside string values (use \\" not ")`;
 
   const strictRetryPrompt = `You MUST respond with ONLY a raw JSON object. No markdown. No code fences. No backticks. No explanation.
 
