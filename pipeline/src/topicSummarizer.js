@@ -30,7 +30,7 @@ async function callLLMForSummary(systemPrompt, userContent) {
             { role: 'user', content: userContent },
           ],
           temperature: 0.3,  // Slightly higher for creative summarization
-          max_tokens: 2048,  // Generous token limit for detailed summaries
+          max_tokens: 3072,  // Balanced: enough headroom without wasting quota
         }),
       });
 
@@ -178,39 +178,39 @@ async function summarizeTopic(topicLabel, segments) {
 
 ANALYSIS REQUIREMENTS:
 
-  1. **Summary Paragraph** (5-7 sentences — be detailed and specific):
-    - What is the main topic/issue?
-    - What exactly are users talking about? Include specific details, problems, product names, error messages, feature names, and concrete examples from the conversation — not vague summaries.
-    - What happened and when?
-    - Who was involved (mention specific usernames when relevant)?
-    - What is the current status?
-    - If users are discussing an issue, describe the issue in detail — what they tried, what failed, what worked.
-    - If users are sharing feedback or requests, capture exactly what they want and why.
+  1. **Summary** (maximum 6 sentences — concise but comprehensive, cover everything):
+    - What is the main topic? Include emotional tone — excitement, frustration, confusion, humor, or any feelings users express.
+    - What exactly are users discussing? Cover ALL angles — bugs, feedback, feature ideas, casual conversation, off-topic tangents, opinions, and experiences. Not everything is an issue. If users are just chatting or sharing thoughts, capture that too.
+    - What happened and when? Who was involved (mention specific usernames)?
+    - Current status — what was tried, what failed, what worked, what remains unresolved?
+    - If users shared opinions, desires, complaints, or experiences, capture what they want and why. Include their emotional state.
+    CRITICAL: Do NOT repeat information. Every sentence must add NEW information. Avoid filler and restating the same point in different words. Pack facts tight but do not omit nuance, emotion, or non-issue topics.
 
-2. **Key Issues** (list all identified problems):
-   - Technical problems (errors, bugs, performance issues)
-   - User complaints (frustrations, pain points)
-   - Feature requests or suggestions
-   - Confusion or misunderstandings
+ 2. **Key Issues** (list all identified problems — only if applicable):
+    - Technical problems (errors, bugs, performance issues)
+    - User complaints (frustrations, pain points)
+    - Feature requests or suggestions
+    - Confusion or misunderstandings
+    If this is not an issue-based discussion (e.g., casual chat, opinions, sharing), use an empty array.
 
-3. **Unanswered Questions** (questions that were asked but never resolved):
-   - Direct questions from users
-   - Problems without solutions
-   - Issues requiring team response
+ 3. **Unanswered Questions** (questions that were asked but never resolved):
+    - Direct questions from users
+    - Problems without solutions
+    - Issues requiring team response
 
-4. **Sentiment Analysis**:
-   - frustrated: Users are angry, upset, or experiencing blockers
-   - confused: Users are uncertain, asking for help, or seeking clarification
-   - neutral: Factual discussion, information sharing, or casual chat
-   - satisfied: Users express happiness, gratitude, or successful resolution
+ 4. **Sentiment Analysis**:
+    - frustrated: Users are angry, upset, or experiencing blockers
+    - confused: Users are uncertain, asking for help, or seeking clarification
+    - neutral: Factual discussion, information sharing, or casual chat
+    - satisfied: Users express happiness, gratitude, or successful resolution
 
-5. **Severity Assessment**:
-   - critical: Widespread outage, data loss, security issue, or many users affected
-   - high: Major feature broken, significant user impact, urgent attention needed
-   - medium: Minor bug, workaround exists, moderate user impact
-   - low: Cosmetic issue, feature request, or minimal user impact
+ 5. **Severity Assessment**:
+    - critical: Widespread outage, data loss, security issue, or many users affected
+    - high: Major feature broken, significant user impact, urgent attention needed
+    - medium: Minor bug, workaround exists, moderate user impact
+    - low: Cosmetic issue, feature request, or minimal user impact
 
-Be thorough and detailed. Do not omit important details. Include specific error codes, affected features, and user quotes when relevant.`;
+Be thorough and detailed. Include specific error codes, affected features, and user quotes when relevant. Do not omit important details or emotional context.`;
 
   const userPrompt = `Analyze this community discussion about "${topicLabel}" and provide a comprehensive summary.
 
@@ -218,7 +218,7 @@ CONVERSATION DATA:
 ${conversationText}
 
 OUTPUT FORMAT — RAW JSON ONLY:
-{"summary":"Your 5-7 sentence summary","key_issues":["Issue 1","Issue 2"],"unanswered_questions":["Question 1"],"sentiment":"frustrated or confused or neutral or satisfied","severity":"critical or high or medium or low"}
+{"summary":"Your summary (max 6 sentences) covering all details, emotions, and non-issue discussions","key_issues":["Issue 1","Issue 2"],"unanswered_questions":["Question 1"],"sentiment":"frustrated or confused or neutral or satisfied","severity":"critical or high or medium or low"}
 
 CRITICAL RULES:
 - Return ONLY the raw JSON object — no markdown, no code fences, no backticks, no explanation text before or after
@@ -230,7 +230,7 @@ CRITICAL RULES:
   const strictRetryPrompt = `You MUST respond with ONLY a raw JSON object. No markdown. No code fences. No backticks. No explanation.
 
 Output this exact JSON structure with real data filled in:
-{"summary":"summary text","key_issues":["issue"],"unanswered_questions":["question"],"sentiment":"neutral","severity":"medium"}
+{"summary":"max 6 sentence summary covering all key details","key_issues":["issue"],"unanswered_questions":["question"],"sentiment":"neutral","severity":"medium"}
 
 The topic is "${topicLabel}". Here is the conversation:
 ${conversationText}
