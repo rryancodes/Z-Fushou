@@ -15,8 +15,10 @@ async function callLLMForSummary(systemPrompt, userContent) {
   const maxRetries = 3;
   const baseDelay = 500;
 
-  // Dynamic max_tokens: cap to fit within model's context window
-  // Model max context = 24,000 tokens. Estimate ~4 chars/token.
+  // Dynamic max_tokens: cap to fit within model's context window.
+  // Model max context = 24,000 tokens. Estimate ~4 chars/token as a heuristic.
+  // If the estimate is wrong (it can be), the 400-context-length handler below
+  // parses the ACTUAL token count from the API error and retries with less.
   const MODEL_MAX_CONTEXT = 24000;
   const SAFETY_MARGIN = 200;
   const DEFAULT_MAX_TOKENS = 3072;
@@ -24,7 +26,7 @@ async function callLLMForSummary(systemPrompt, userContent) {
   const messageChars = systemPrompt.length + userContent.length;
   const estimatedMessageTokens = Math.ceil(messageChars / 4);
   const availableTokens = MODEL_MAX_CONTEXT - estimatedMessageTokens - SAFETY_MARGIN;
-  const dynamicMaxTokens = Math.max(MIN_MAX_TOKENS, Math.min(DEFAULT_MAX_TOKENS, availableTokens));
+  let currentMaxTokens = Math.max(MIN_MAX_TOKENS, Math.min(DEFAULT_MAX_TOKENS, availableTokens));
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -41,7 +43,7 @@ async function callLLMForSummary(systemPrompt, userContent) {
             { role: 'user', content: userContent },
           ],
           temperature: 0.3,  // Slightly higher for creative summarization
-          max_tokens: dynamicMaxTokens,  // Auto-caps for large conversations
+          max_tokens: currentMaxTokens,
         }),
       });
 
@@ -51,6 +53,28 @@ async function callLLMForSummary(systemPrompt, userContent) {
         if (attempt === maxRetries) throw new Error(`LLM 429 after ${maxRetries} retries`);
         await new Promise(r => setTimeout(r, delay));
         continue;
+      }
+
+      if (res.status === 400) {
+        const errText = await res.text();
+
+        // Context-length overflow: the API tells us the ACTUAL message token count.
+        // Parse "X in the messages" and shrink max_tokens to fit the real limit.
+        const ctxMatch = errText.match(/(\d+)\s+in the messages/i);
+        if (ctxMatch) {
+          const actualMessageTokens = parseInt(ctxMatch[1], 10);
+          const newMaxTokens = MODEL_MAX_CONTEXT - actualMessageTokens - SAFETY_MARGIN;
+          if (newMaxTokens >= MIN_MAX_TOKENS) {
+            logger.warn('topicSummarizer', `Context overflow — shrinking max_tokens ${currentMaxTokens} → ${newMaxTokens} (actual msg tokens: ${actualMessageTokens})`);
+            currentMaxTokens = newMaxTokens;
+            await new Promise(r => setTimeout(r, baseDelay));
+            continue;  // retry with reduced max_tokens
+          }
+          // Not even MIN_MAX_TOKENS fits — message alone exceeds the window.
+          throw new Error(`LLM context overflow: ${actualMessageTokens} message tokens exceeds ${MODEL_MAX_CONTEXT} limit`);
+        }
+
+        throw new Error(`LLM call failed: 400 ${errText.slice(0, 300)}`);
       }
 
       if (!res.ok) {
