@@ -15,6 +15,17 @@ async function callLLMForSummary(systemPrompt, userContent) {
   const maxRetries = 3;
   const baseDelay = 500;
 
+  // Dynamic max_tokens: cap to fit within model's context window
+  // Model max context = 24,000 tokens. Estimate ~4 chars/token.
+  const MODEL_MAX_CONTEXT = 24000;
+  const SAFETY_MARGIN = 200;
+  const DEFAULT_MAX_TOKENS = 3072;
+  const MIN_MAX_TOKENS = 512;
+  const messageChars = systemPrompt.length + userContent.length;
+  const estimatedMessageTokens = Math.ceil(messageChars / 4);
+  const availableTokens = MODEL_MAX_CONTEXT - estimatedMessageTokens - SAFETY_MARGIN;
+  const dynamicMaxTokens = Math.max(MIN_MAX_TOKENS, Math.min(DEFAULT_MAX_TOKENS, availableTokens));
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(CHAT_ENDPOINT, {
@@ -30,7 +41,7 @@ async function callLLMForSummary(systemPrompt, userContent) {
             { role: 'user', content: userContent },
           ],
           temperature: 0.3,  // Slightly higher for creative summarization
-          max_tokens: 3072,  // Balanced: enough headroom without wasting quota
+          max_tokens: dynamicMaxTokens,  // Auto-caps for large conversations
         }),
       });
 
