@@ -23,6 +23,8 @@ const PIPELINE_CONFIG = {
 
   // LLM Classifier (primary clustering path)
   CHAT_MODEL: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  LARGE_CHAT_MODEL: '@cf/moonshotai/kimi-k2.7-code',  // 262K context — used when messages exceed threshold
+  LARGE_MESSAGE_THRESHOLD: 700,        // switch to LARGE_CHAT_MODEL above this many messages
   CLASSIFIER_SAMPLE_SIZE: 15,        // segments sampled for category discovery
   CLASSIFIER_PREVIEW_MESSAGES: 20,   // max messages per segment in LLM prompt (minimum 20)
   CLASSIFIER_BATCH_SIZE: 10,         // segments per classification API call

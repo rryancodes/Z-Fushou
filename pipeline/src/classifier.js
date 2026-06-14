@@ -4,8 +4,34 @@ const { PIPELINE_CONFIG } = require('../pipeline.config');
 const CF_ACCOUNT_ID = process.env.PIPELINE_CF_ACCOUNT_ID;
 const CF_API_TOKEN = process.env.PIPELINE_CF_API_TOKEN;
 const CHAT_MODEL = PIPELINE_CONFIG.CHAT_MODEL;
+const LARGE_CHAT_MODEL = PIPELINE_CONFIG.LARGE_CHAT_MODEL;
+const LARGE_MESSAGE_THRESHOLD = PIPELINE_CONFIG.LARGE_MESSAGE_THRESHOLD;
 
 const CHAT_ENDPOINT = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/v1/chat/completions`;
+
+/**
+ * Pick the right model based on message count.
+ * Large conversations overflow Llama's 24K context — Kimi-k2.7-code has 262K.
+ */
+function pickModel(messageCount) {
+  if (messageCount > LARGE_MESSAGE_THRESHOLD) {
+    logger.info('classifier', `Using large-context model for ${messageCount} messages`, {
+      model: LARGE_CHAT_MODEL,
+      threshold: LARGE_MESSAGE_THRESHOLD,
+    });
+    return LARGE_CHAT_MODEL;
+  }
+  return CHAT_MODEL;
+}
+
+/**
+ * Count total messages across an array of segments.
+ */
+function countMessages(segments) {
+  return segments.reduce(function(sum, seg) {
+    return sum + (seg.messages ? seg.messages.length : 0);
+  }, 0);
+}
 
 /**
  * Call the Cloudflare LLM via OpenAI-compatible chat completions endpoint.
@@ -14,11 +40,13 @@ const CHAT_ENDPOINT = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUN
  * @param {string} systemPrompt
  * @param {string} userContent
  * @param {number} [retries]
+ * @param {number} [messageCount] — total messages, picks large-context model if > threshold
  * @returns {Promise<string>} LLM response content
  */
-async function callLLM(systemPrompt, userContent, retries) {
+async function callLLM(systemPrompt, userContent, retries, messageCount) {
   retries = retries || PIPELINE_CONFIG.CLASSIFIER_MAX_RETRIES;
   const baseDelay = PIPELINE_CONFIG.CLASSIFIER_RETRY_BASE_MS;
+  const model = pickModel(messageCount || 0);
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -29,7 +57,7 @@ async function callLLM(systemPrompt, userContent, retries) {
           'Authorization': `Bearer ${CF_API_TOKEN}`,
         },
         body: JSON.stringify({
-          model: CHAT_MODEL,
+          model: model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent },
@@ -165,7 +193,8 @@ async function discoverCategories(segments, sampleSize) {
     'Return ONLY the JSON array, no explanation.';
 
   console.log('[classifier] Calling LLM for category discovery with', sampled.length, 'sample segments...');
-  var raw = await callLLM(systemPrompt, segmentTexts);
+  const sampleMessageCount = countMessages(sampled);
+  var raw = await callLLM(systemPrompt, segmentTexts, undefined, sampleMessageCount);
   console.log('[classifier] LLM raw response type:', typeof raw, 'length:', typeof raw === 'string' ? raw.length : 'N/A');
   console.log('[classifier] LLM raw response preview:', typeof raw === 'string' ? raw.slice(0, 200) : raw);
   
@@ -232,7 +261,8 @@ async function classifySegments(segments, categories) {
       'Return ONLY the JSON array, no explanation.';
 
     try {
-      var raw = await callLLM(systemPrompt, segmentTexts);
+      const batchMessageCount = countMessages(batch);
+      var raw = await callLLM(systemPrompt, segmentTexts, undefined, batchMessageCount);
       var jsonStr = extractJSON(raw);
       var results = JSON.parse(jsonStr);
 
@@ -294,4 +324,4 @@ async function classifyPipeline(segments) {
   return classifications;
 }
 
-module.exports = { classifyPipeline, discoverCategories, classifySegments, callLLM, formatSegmentPreview, extractJSON };
+module.exports = { classifyPipeline, discoverCategories, classifySegments, callLLM, formatSegmentPreview, extractJSON, pickModel, countMessages };

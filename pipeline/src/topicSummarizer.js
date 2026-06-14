@@ -4,16 +4,34 @@ const { PIPELINE_CONFIG } = require('../pipeline.config');
 const CF_ACCOUNT_ID = process.env.PIPELINE_CF_ACCOUNT_ID;
 const CF_API_TOKEN = process.env.PIPELINE_CF_API_TOKEN;
 const CHAT_MODEL = PIPELINE_CONFIG.CHAT_MODEL;
+const LARGE_CHAT_MODEL = PIPELINE_CONFIG.LARGE_CHAT_MODEL;
+const LARGE_MESSAGE_THRESHOLD = PIPELINE_CONFIG.LARGE_MESSAGE_THRESHOLD;
 
 const CHAT_ENDPOINT = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/v1/chat/completions`;
+
+/**
+ * Pick the right model based on message count.
+ * Large conversations overflow Llama's 24K context — Kimi-k2.7-code has 262K.
+ */
+function pickModel(messageCount) {
+  if (messageCount > LARGE_MESSAGE_THRESHOLD) {
+    logger.info('topicSummarizer', `Using large-context model for ${messageCount} messages`, {
+      model: LARGE_CHAT_MODEL,
+      threshold: LARGE_MESSAGE_THRESHOLD,
+    });
+    return LARGE_CHAT_MODEL;
+  }
+  return CHAT_MODEL;
+}
 
 /**
  * Call Cloudflare LLM for summarization.
  * Uses generous token limits for detailed summaries.
  */
-async function callLLMForSummary(systemPrompt, userContent) {
+async function callLLMForSummary(systemPrompt, userContent, messageCount) {
   const maxRetries = 3;
   const baseDelay = 500;
+  const model = pickModel(messageCount || 0);
 
   // Dynamic max_tokens: cap to fit within model's context window.
   // Model max context = 24,000 tokens. Estimate ~4 chars/token as a heuristic.
@@ -37,7 +55,7 @@ async function callLLMForSummary(systemPrompt, userContent) {
           'Authorization': `Bearer ${CF_API_TOKEN}`,
         },
         body: JSON.stringify({
-          model: CHAT_MODEL,
+          model: model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userContent },
@@ -208,6 +226,7 @@ function buildConversationText(segments) {
  */
 async function summarizeTopic(topicLabel, segments) {
   const conversationText = buildConversationText(segments);
+  const messageCount = segments.reduce((sum, seg) => sum + seg.messages.length, 0);
   
   const systemPrompt = `You are an expert community analyst. Your task is to analyze Discord community discussions and produce detailed, actionable summaries.
 
@@ -275,7 +294,7 @@ ${conversationText}
 Respond with the JSON object now. Nothing else.`;
 
   try {
-    const { content, usage } = await callLLMForSummary(systemPrompt, userPrompt);
+    const { content, usage } = await callLLMForSummary(systemPrompt, userPrompt, messageCount);
     let jsonStr = extractJSON(content);
     let retried = false;
 
@@ -285,7 +304,7 @@ Respond with the JSON object now. Nothing else.`;
         rawResponse: typeof content === 'string' ? content.slice(0, 2000) : String(content).slice(0, 2000),
         responseLength: typeof content === 'string' ? content.length : 0,
       });
-      const retryResult = await callLLMForSummary(systemPrompt, strictRetryPrompt);
+      const retryResult = await callLLMForSummary(systemPrompt, strictRetryPrompt, messageCount);
       jsonStr = extractJSON(retryResult.content);
       retried = true;
 
@@ -315,8 +334,9 @@ Respond with the JSON object now. Nothing else.`;
     parsed.sentiment = validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'neutral';
     parsed.severity = validSeverities.includes(parsed.severity) ? parsed.severity : 'medium';
 
-    // Add token usage
+    // Add token usage and model used
     parsed.tokensUsed = usage?.total_tokens || 0;
+    parsed.llmModel = pickModel(messageCount);
 
     logger.info('topicSummarizer', `Generated summary for "${topicLabel}"`, {
       tokensUsed: parsed.tokensUsed,
@@ -441,7 +461,7 @@ async function generateTopicSummaries(classifications, segments, batchId, proces
       messages_per_hour: metrics.messagesPerHour,
       start_timestamp: startTimestamp,
       end_timestamp: endTimestamp,
-      llm_model: CHAT_MODEL,
+      llm_model: llmSummary.llmModel || CHAT_MODEL,
       llm_tokens_used: llmSummary.tokensUsed,
       processing_date: processingDate, // DATE ISOLATION: Explicit date column
     });
@@ -468,4 +488,5 @@ module.exports = {
   stripMarkdownFences,
   findBalancedJSON,
   callLLMForSummary,
+  pickModel,
 };
